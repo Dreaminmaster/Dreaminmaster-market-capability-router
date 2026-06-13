@@ -59,6 +59,14 @@ python scripts/install_skill.py --target ~/.agents/skills
 
 脚本只复制 `skills/market-capability-router`，不会修改 Agent 的其他配置。不同 Agent 的 Skill 目录不同，可通过 `--target` 指定。
 
+### OpenMinis 直接调用
+
+OpenMinis 当前不自动注册 `tool_manifest.json`，建议通过 `shell_execute` 直接调用虚拟环境中的 `mcr`，无需常驻 HTTP 服务。详细步骤见 `docs/OPENMINIS_INTEGRATION.md`。
+
+```bash
+/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt
+```
+
 ### 目录
 
 ```text
@@ -79,7 +87,7 @@ market-capability-router/
 
 ### 当前状态
 
-当前版本为 `v0.1.0`：完成产品规格、数据模式、规则型最小原型、Skill、测试与施工任务书。联网检索、浏览器自动化、图像理解和模型适配器保留为后续插件，不在第一版默认启用。
+当前版本为 `v0.1.1`：完成产品规格、数据模式、规则型最小原型、Skill、测试与施工任务书。联网检索、浏览器自动化、图像理解和模型适配器保留为后续插件，不在第一版默认启用。
 
 ## English summary
 

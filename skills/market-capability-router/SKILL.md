@@ -48,6 +48,24 @@ Do not trigger solely because a marketplace is mentioned. First determine whethe
 9. Set human approval gates before credentials, identity documents, account access, payment, signing, or submission.
 10. State uncertainty and missing evidence.
 
+## OpenMinis runtime invocation
+
+When running inside OpenMinis and `shell_execute` is available, use the installed deterministic runtime instead of relying only on free-form reasoning. Never interpolate untrusted user text directly into a shell command. Write the text to a UTF-8 temporary file through the filesystem tool, then use the absolute executable path:
+
+```bash
+/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt
+```
+
+For a normalized candidate object, pass JSON through stdin:
+
+```bash
+printf '%s' '<candidate JSON>' | \
+  /root/Dreaminmaster-market-capability-router/.venv/bin/mcr candidate - \
+  --need "<need term>"
+```
+
+The CLI also accepts `mcr analyze -` when stdin can be supplied separately. Do not start a persistent HTTP server unless the host platform specifically requires HTTP tools. Do not claim this Skill was used unless the runtime was actually called or the structured reasoning flow was explicitly followed.
+
 ## Platform dialect rules
 
 You may interpret abbreviations, homophones, symbols, hidden product packaging, image-only descriptions, placeholder prices, and “message before buying” patterns.

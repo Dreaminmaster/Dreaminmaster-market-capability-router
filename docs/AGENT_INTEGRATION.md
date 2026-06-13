@@ -10,7 +10,24 @@ python scripts/install_skill.py --target /path/to/agent/skills
 
 This is suitable when the Agent already has web, vision, and code tools and only needs the routing policy and output format.
 
-## Mode B: Skill + local runtime
+## Mode B: Skill + direct CLI runtime (recommended for OpenMinis)
+
+OpenMinis does not currently auto-register `tool_manifest.json`. Use `shell_execute` with the absolute virtual-environment command path. Write untrusted user text to a temporary UTF-8 file first; never interpolate it directly into a shell command:
+
+```bash
+/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt
+```
+
+Candidate JSON can be read from stdin:
+
+```bash
+printf '%s' '{"title":"装修报价审核","deliverables":["标注版"]}' | \
+  /root/Dreaminmaster-market-capability-router/.venv/bin/mcr candidate - --need 装修 --need 报价
+```
+
+This mode avoids a permanent background service. See `docs/OPENMINIS_INTEGRATION.md`.
+
+## Mode C: Skill + local HTTP runtime
 
 ```bash
 python3 -m venv .venv
@@ -85,10 +102,10 @@ Use after the Agent or user has collected a listing, service description, price,
 
 ```text
 Read Skill
--> call /analyze
+-> call /analyze or direct CLI
 -> use returned query lattice with available search tools
 -> normalize candidate information
--> call /candidate/evaluate
+-> call /candidate/evaluate or direct CLI
 -> present evidence and questions
 -> wait for human approval before sensitive actions
 -> record a redacted outcome

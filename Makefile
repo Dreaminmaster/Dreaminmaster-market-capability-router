@@ -1,4 +1,4 @@
-.PHONY: test validate eval doctor all
+.PHONY: test validate eval doctor openminis-smoke all
 
 test:
 	python -m unittest discover -s tests -v
@@ -11,5 +11,8 @@ eval:
 
 doctor:
 	python scripts/doctor.py
+
+openminis-smoke:
+	python scripts/openminis_smoke.py --skill-root "$${MCR_SKILL_ROOT:-skills}"
 
 all: doctor validate test eval

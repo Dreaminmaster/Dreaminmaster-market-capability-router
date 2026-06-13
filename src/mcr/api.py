@@ -29,7 +29,7 @@ class MCRRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
-            self._send(200, {"status": "ok", "service": "market-capability-router", "version": "0.1.0"})
+            self._send(200, {"status": "ok", "service": "market-capability-router", "version": "0.1.1"})
             return
         self._send(404, {"error": "not_found"})
 
