@@ -1,0 +1,97 @@
+[
+  {
+    "id": "knowledge",
+    "description": "用户缺少规则、步骤或基础信息。",
+    "signals": [
+      "不知道",
+      "怎么做",
+      "需要准备什么",
+      "流程",
+      "规则"
+    ],
+    "base_score": 0.12,
+    "signal_weight": 0.2,
+    "emit_threshold": 0.3
+  },
+  {
+    "id": "diagnosis",
+    "description": "用户知道目标但不知道失败原因。",
+    "signals": [
+      "失败",
+      "不通过",
+      "被拒",
+      "报错",
+      "解封",
+      "申诉",
+      "原因",
+      "为什么"
+    ],
+    "base_score": 0.1,
+    "signal_weight": 0.2,
+    "emit_threshold": 0.3
+  },
+  {
+    "id": "skill",
+    "description": "用户缺少熟练度、行业经验或操作能力。",
+    "signals": [
+      "看不懂",
+      "不会",
+      "不熟",
+      "经验",
+      "指导",
+      "调试"
+    ],
+    "base_score": 0.1,
+    "signal_weight": 0.2,
+    "emit_threshold": 0.3
+  },
+  {
+    "id": "channel",
+    "description": "用户缺少价格、资源或合法获取渠道。",
+    "signals": [
+      "便宜",
+      "优惠",
+      "渠道",
+      "哪里找",
+      "货比三家",
+      "更好的价格"
+    ],
+    "base_score": 0.1,
+    "signal_weight": 0.2,
+    "emit_threshold": 0.3
+  },
+  {
+    "id": "execution",
+    "description": "用户缺少时间、所在地、设备或现实执行能力。",
+    "signals": [
+      "跑腿",
+      "异地",
+      "现场",
+      "代取",
+      "看房",
+      "拍照",
+      "没时间"
+    ],
+    "base_score": 0.08,
+    "signal_weight": 0.22,
+    "emit_threshold": 0.3
+  },
+  {
+    "id": "verification",
+    "description": "用户需要独立复核、第二意见或真假判断。",
+    "signals": [
+      "审核",
+      "复核",
+      "真假",
+      "靠谱吗",
+      "担心",
+      "报价单",
+      "合同",
+      "验机",
+      "第三方"
+    ],
+    "base_score": 0.1,
+    "signal_weight": 0.2,
+    "emit_threshold": 0.3
+  }
+]

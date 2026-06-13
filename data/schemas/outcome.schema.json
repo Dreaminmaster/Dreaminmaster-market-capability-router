@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Outcome",
+  "type": "object",
+  "required": [
+    "case_id",
+    "chosen_route",
+    "success"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string"
+    },
+    "chosen_route": {
+      "type": "string"
+    },
+    "chosen_service_level": {
+      "type": "string"
+    },
+    "query_used": {
+      "type": "string"
+    },
+    "money_spent": {
+      "type": "number",
+      "minimum": 0
+    },
+    "time_spent_hours": {
+      "type": "number",
+      "minimum": 0
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "promise_matched": {
+      "type": "boolean"
+    },
+    "extra_charges": {
+      "type": "boolean"
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

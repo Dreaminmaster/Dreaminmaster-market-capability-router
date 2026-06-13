@@ -1,0 +1,33 @@
+{
+  "name": "market-capability-router",
+  "version": "0.1.0",
+  "transport": "http",
+  "base_url": "http://127.0.0.1:8765",
+  "tools": [
+    {
+      "name": "mcr_analyze",
+      "method": "POST",
+      "path": "/analyze",
+      "description": "Diagnose friction, route capabilities, decide market entry, and build a query lattice.",
+      "input_schema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {"text": {"type": "string", "minLength": 1}}
+      }
+    },
+    {
+      "name": "mcr_evaluate_candidate",
+      "method": "POST",
+      "path": "/candidate/evaluate",
+      "description": "Evaluate a normalized marketplace or professional-service candidate.",
+      "input_schema": {
+        "type": "object",
+        "required": ["candidate"],
+        "properties": {
+          "candidate": {"type": "object"},
+          "need_terms": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  ]
+}

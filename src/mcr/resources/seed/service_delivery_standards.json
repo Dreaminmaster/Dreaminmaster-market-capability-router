@@ -1,0 +1,102 @@
+[
+  {
+    "id": "renovation_quote_review",
+    "trigger_terms": [
+      "装修",
+      "报价单",
+      "增项"
+    ],
+    "problem_terms": [
+      "装修报价单",
+      "装修预算",
+      "装修增项"
+    ],
+    "action_terms": [
+      "审核",
+      "复核",
+      "排雷",
+      "把关"
+    ],
+    "deliverables": [
+      "高价项标注",
+      "重复项清单",
+      "漏项清单",
+      "追问清单"
+    ]
+  },
+  {
+    "id": "account_appeal_review",
+    "trigger_terms": [
+      "账号",
+      "申诉",
+      "封号",
+      "解封"
+    ],
+    "problem_terms": [
+      "账号申诉",
+      "封禁原因",
+      "申诉材料"
+    ],
+    "action_terms": [
+      "诊断",
+      "原因分析",
+      "材料审核",
+      "修改建议"
+    ],
+    "deliverables": [
+      "原因假设",
+      "材料问题清单",
+      "申诉文本建议",
+      "官方流程清单"
+    ]
+  },
+  {
+    "id": "hotel_channel_compare",
+    "trigger_terms": [
+      "酒店",
+      "订房",
+      "预订"
+    ],
+    "problem_terms": [
+      "酒店预订",
+      "酒店价格",
+      "差旅方案"
+    ],
+    "action_terms": [
+      "比价",
+      "渠道比较",
+      "方案规划"
+    ],
+    "deliverables": [
+      "价格对比",
+      "取消规则",
+      "税费说明",
+      "合法渠道说明"
+    ]
+  },
+  {
+    "id": "device_inspection",
+    "trigger_terms": [
+      "二手电脑",
+      "二手手机",
+      "验机",
+      "维修"
+    ],
+    "problem_terms": [
+      "二手设备",
+      "设备成色",
+      "维修历史"
+    ],
+    "action_terms": [
+      "远程验机",
+      "第三方检测",
+      "风险评估"
+    ],
+    "deliverables": [
+      "检测清单",
+      "异常证据",
+      "购买建议",
+      "议价点"
+    ]
+  }
+]

@@ -1,0 +1,111 @@
+[
+  {
+    "id": "credential_verification_code",
+    "category": "account_access",
+    "severity": "critical",
+    "signals": [
+      "验证码",
+      "短信码",
+      "动态口令"
+    ],
+    "explanation": "服务要求可能涉及接管账号或绕过本人确认。",
+    "recommended_action": "不得提供验证码；停止交易并改用本人或官方流程。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "credential_password",
+    "category": "account_access",
+    "severity": "critical",
+    "signals": [
+      "支付密码",
+      "账号密码",
+      "把密码给我"
+    ],
+    "explanation": "服务要求完整账号或支付控制权。",
+    "recommended_action": "不得提供密码；仅允许脱敏材料审核。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "forgery",
+    "category": "policy_legality",
+    "severity": "critical",
+    "signals": [
+      "伪造材料",
+      "假证明",
+      "修改后台",
+      "绕过实名"
+    ],
+    "explanation": "涉及伪造、后台操纵或规则规避。",
+    "recommended_action": "停止并转向合法官方渠道。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "guaranteed_success",
+    "category": "truthfulness",
+    "severity": "high",
+    "signals": [
+      "百分百成功",
+      "100%成功",
+      "包过",
+      "秒解",
+      "保证解封"
+    ],
+    "explanation": "对不可控结果作绝对承诺。",
+    "recommended_action": "要求说明可控交付物，不按结果承诺付款。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "internal_channel",
+    "category": "truthfulness",
+    "severity": "high",
+    "signals": [
+      "内部渠道",
+      "内部关系",
+      "后台有人"
+    ],
+    "explanation": "以不可验证的内部权限作为卖点。",
+    "recommended_action": "要求可验证的合法流程；无法说明则排除。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "off_platform_payment",
+    "category": "payment",
+    "severity": "high",
+    "signals": [
+      "微信转账",
+      "支付宝私下",
+      "平台外付款",
+      "脱离平台"
+    ],
+    "explanation": "失去平台担保并提高资金追回难度。",
+    "recommended_action": "保留平台内交易和可追溯记录。",
+    "human_confirmation_required": true
+  },
+  {
+    "id": "placeholder_price",
+    "category": "price",
+    "severity": "medium",
+    "signals": [
+      "价格仅展示",
+      "实际价格私聊",
+      "一元链接",
+      "定金链接"
+    ],
+    "explanation": "标价可能不是总价。",
+    "recommended_action": "在购买前确认总价、分阶段费用和退款规则。",
+    "human_confirmation_required": false
+  },
+  {
+    "id": "remote_control",
+    "category": "account_access",
+    "severity": "high",
+    "signals": [
+      "远程控制",
+      "远程登录",
+      "共享屏幕操作账号"
+    ],
+    "explanation": "可能暴露账号、文件和支付信息。",
+    "recommended_action": "使用最小权限并由用户全程监督；高敏感任务拒绝远程控制。",
+    "human_confirmation_required": true
+  }
+]

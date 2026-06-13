@@ -1,0 +1,23 @@
+{
+  "title": "装修报价单远程审核 造价员看单",
+  "description": "提供报价复核，不代签合同。会标记高价、重复和漏项，24小时内交付PDF。拍前联系确认页数。",
+  "deliverables": [
+    "标注版报价单",
+    "风险清单",
+    "与装修公司沟通问题清单"
+  ],
+  "provider_background": "家装造价相关工作经验",
+  "price_model": "按页数分档，购买前确认总价",
+  "required_data": [
+    "脱敏报价单"
+  ],
+  "claims": [
+    "不保证最终议价结果"
+  ],
+  "evidence": [
+    "脱敏样例",
+    "交付模板"
+  ],
+  "limitations": "不进行现场尺寸复核",
+  "trial_available": true
+}

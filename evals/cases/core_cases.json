@@ -1,0 +1,90 @@
+[
+  {
+    "id": "renovation",
+    "input": "装修公司给了我一份报价单，我看不懂，也担心后续增项。",
+    "expect": {
+      "friction": "verification",
+      "route": "MARKET",
+      "market": true,
+      "query_contains": "装修报价单"
+    }
+  },
+  {
+    "id": "account",
+    "input": "账号申诉三次失败，有人说百分百解封，需要验证码。",
+    "expect": {
+      "friction": "diagnosis",
+      "route": "OFFICIAL",
+      "market": false,
+      "critical_risk": true
+    }
+  },
+  {
+    "id": "hotel",
+    "input": "酒店价格太贵，不知道有没有合法的更优惠预订渠道。",
+    "expect": {
+      "friction": "channel",
+      "route": "TOOL",
+      "market": true,
+      "query_contains": "酒店预订"
+    }
+  },
+  {
+    "id": "onsite",
+    "input": "我人在国外，需要有人帮我现场看房并拍照。",
+    "expect": {
+      "friction": "execution",
+      "route": "MARKET",
+      "market": true
+    }
+  },
+  {
+    "id": "simple",
+    "input": "请帮我把下面的文字整理得更清楚。",
+    "expect": {
+      "route": "AI",
+      "market": false
+    }
+  },
+  {
+    "id": "contract",
+    "input": "这份合同我担心有隐藏风险，想找人复核。",
+    "expect": {
+      "friction": "verification",
+      "route": "PROFESSIONAL",
+      "market": true
+    }
+  },
+  {
+    "id": "device",
+    "input": "准备买二手电脑，担心维修过，想远程验机。",
+    "expect": {
+      "friction": "verification",
+      "route": "MARKET",
+      "market": true,
+      "query_contains": "二手设备"
+    }
+  },
+  {
+    "id": "offplatform",
+    "input": "卖家让我脱离平台微信转账，价格仅展示。",
+    "expect": {
+      "high_risk": true
+    }
+  },
+  {
+    "id": "dialect",
+    "input": "卖家写的是报价体检，拍前联系。",
+    "expect": {
+      "dialect": "装修报价审核"
+    }
+  },
+  {
+    "id": "self_sensitive",
+    "input": "对方让我把账号密码给他操作。",
+    "expect": {
+      "route": "SELF",
+      "critical_risk": true
+    }
+  }
+]

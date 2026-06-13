@@ -1,0 +1,122 @@
+[
+  {
+    "term": "报价体检",
+    "canonical_concept": "装修报价审核",
+    "platform": "generic_marketplace",
+    "expression_type": "packaged_phrase",
+    "possible_services": [
+      "报价复核",
+      "增项检查"
+    ],
+    "risk_level": "low",
+    "confidence": 0.88,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "description",
+      "deliverable"
+    ],
+    "status": "verified"
+  },
+  {
+    "term": "看单",
+    "canonical_concept": "对报价、合同或材料进行快速审核",
+    "platform": "generic_marketplace",
+    "expression_type": "colloquial",
+    "possible_services": [
+      "材料审核",
+      "报价复核",
+      "第二意见"
+    ],
+    "risk_level": "low",
+    "confidence": 0.74,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "object_being_reviewed"
+    ],
+    "status": "candidate"
+  },
+  {
+    "term": "账号体检",
+    "canonical_concept": "账号状态或风控原因分析",
+    "platform": "generic_marketplace",
+    "expression_type": "packaged_phrase",
+    "possible_services": [
+      "申诉诊断",
+      "账号运营检查",
+      "违规代操作"
+    ],
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "required_permissions",
+      "deliverable",
+      "guarantee_language"
+    ],
+    "status": "candidate"
+  },
+  {
+    "term": "具体私聊",
+    "canonical_concept": "公开描述不完整，需要进一步确认真实服务",
+    "platform": "generic_marketplace",
+    "expression_type": "incomplete_disclosure",
+    "possible_services": [
+      "正常定制服务",
+      "平台外引流",
+      "隐蔽服务"
+    ],
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "chat",
+      "price_model",
+      "transaction_location"
+    ],
+    "status": "verified"
+  },
+  {
+    "term": "拍前联系",
+    "canonical_concept": "购买前需要确认范围、价格或库存",
+    "platform": "generic_marketplace",
+    "expression_type": "purchase_instruction",
+    "possible_services": [
+      "定制服务",
+      "占位价格",
+      "额外收费"
+    ],
+    "risk_level": "medium",
+    "confidence": 0.76,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "total_price",
+      "deliverable"
+    ],
+    "status": "verified"
+  },
+  {
+    "term": "不是实物",
+    "canonical_concept": "虚拟服务或数字交付",
+    "platform": "generic_marketplace",
+    "expression_type": "virtual_service_signal",
+    "possible_services": [
+      "咨询",
+      "资料",
+      "远程服务"
+    ],
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "first_seen": "2026-06-14",
+    "last_verified": "2026-06-14",
+    "evidence_required": [
+      "deliverable",
+      "refund_policy"
+    ],
+    "status": "verified"
+  }
+]
