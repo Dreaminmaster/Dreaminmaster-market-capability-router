@@ -1,7 +1,4 @@
-"""OpenAI-compatible chat-completions adapter with proper status classification.
-
-Uses only Python standard library.
-"""
+"""OpenAI-compatible adapter. Sets structured status and error_type on failure."""
 
 from __future__ import annotations
 
@@ -11,13 +8,28 @@ import time
 import urllib.parse
 from typing import Any
 
-from .base import LLMResponse
+from .base import (
+    LLMResponse,
+    STATUS_OK,
+    STATUS_TIMEOUT,
+    STATUS_CONNECTION_ERROR,
+    STATUS_AUTH_ERROR,
+    STATUS_HTTP_ERROR,
+    STATUS_INVALID_JSON,
+    STATUS_RESPONSE_TOO_LARGE,
+)
+
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # 2 MB
+
+RETRYABLE_HTTP = {429, 502, 503, 504}
+NON_RETRYABLE_HTTP = {400, 401, 403, 404}
 
 
 class LLMAdapterError(RuntimeError):
-    def __init__(self, message: str, *, cause: BaseException | None = None):
+    def __init__(self, message: str, *, cause: BaseException | None = None, http_status: int | None = None):
         super().__init__(message)
         self.cause = cause
+        self.http_status = http_status
 
 
 class LLMAuthError(LLMAdapterError):
@@ -33,53 +45,28 @@ class LLMResponseError(LLMAdapterError):
 
 
 class LLMHttpError(LLMAdapterError):
-    """Non-retryable HTTP client error (4xx except 429)."""
-
-    def __init__(self, message: str, status: int):
-        super().__init__(message)
-        self.status = status
+    pass
 
 
 class LLMServerError(LLMAdapterError):
-    """Potentially retryable server error (5xx)."""
-
-    def __init__(self, message: str, status: int):
-        super().__init__(message)
-        self.status = status
+    pass
 
 
-RETRYABLE_HTTP = {429, 502, 503, 504}
-NON_RETRYABLE_HTTP = {400, 401, 403, 404}
-
-
-MODEL_STATUS_NOT_CONFIGURED = "not_configured"
-MODEL_STATUS_OK = "ok"
-MODEL_STATUS_TIMEOUT = "timeout"
-MODEL_STATUS_CONNECTION_ERROR = "connection_error"
-MODEL_STATUS_AUTH_ERROR = "auth_error"
-MODEL_STATUS_HTTP_ERROR = "http_error"
-MODEL_STATUS_INVALID_JSON = "invalid_json"
-MODEL_STATUS_SCHEMA_ERROR = "schema_error"
-MODEL_STATUS_RESPONSE_TOO_LARGE = "response_too_large"
-MODEL_STATUS_PROMPT_INJECTION = "prompt_injection_warning"
-
-
-def _classify_error(exc: BaseException | None) -> str | None:
+def _map_error(exc: BaseException | None) -> tuple[str, str]:
+    """Return (status, error_type)."""
     if exc is None:
-        return None
+        return STATUS_OK, ""
     if isinstance(exc, LLMAuthError):
-        return MODEL_STATUS_AUTH_ERROR
+        return STATUS_AUTH_ERROR, "auth_error"
     if isinstance(exc, LLMTimeoutError):
-        return MODEL_STATUS_TIMEOUT
+        return STATUS_TIMEOUT, "timeout"
     if isinstance(exc, LLMResponseError):
-        if "Unable to parse" in str(exc):
-            return MODEL_STATUS_INVALID_JSON
-        return MODEL_STATUS_INVALID_JSON
+        return STATUS_INVALID_JSON, "invalid_json"
     if isinstance(exc, LLMHttpError):
-        return MODEL_STATUS_HTTP_ERROR
+        return STATUS_HTTP_ERROR, "http_error"
     if isinstance(exc, LLMServerError):
-        return MODEL_STATUS_HTTP_ERROR
-    return MODEL_STATUS_CONNECTION_ERROR
+        return STATUS_HTTP_ERROR, "server_error"
+    return STATUS_CONNECTION_ERROR, "connection_error"
 
 
 class OpenAICompatibleAdapter:
@@ -102,12 +89,8 @@ class OpenAICompatibleAdapter:
         self.max_retries = max_retries
 
     def complete_json(
-        self,
-        *,
-        system: str,
-        user_payload: dict[str, object],
-        schema: dict[str, object],
-        timeout_seconds: float | None = None,
+        self, *, system: str, user_payload: dict[str, object],
+        schema: dict[str, object], timeout_seconds: float | None = None,
         max_tokens: int = 1024,
     ) -> LLMResponse:
         timeout = timeout_seconds or self.timeout_seconds
@@ -116,23 +99,18 @@ class OpenAICompatibleAdapter:
         body_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
 
         last_error: BaseException | None = None
-        attempt: int = 0
-        while attempt <= self.max_retries:
+        for attempt in range(self.max_retries + 1):
             try:
                 raw_text, latency_ms = self._send(body_bytes, timeout)
                 parsed = self._parse(raw_text)
                 return LLMResponse(
-                    provider="openai_compatible",
-                    model=self.model,
-                    raw_text=raw_text,
-                    parsed=parsed,
-                    latency_ms=latency_ms,
-                    warnings=warnings,
+                    provider="openai_compatible", model=self.model,
+                    raw_text=raw_text, parsed=parsed, latency_ms=latency_ms,
+                    warnings=warnings, status=STATUS_OK,
                 )
             except (LLMAuthError, LLMHttpError):
-                raise  # Never retry
+                raise
             except LLMResponseError:
-                # Invalid JSON from a valid HTTP response — don't retry
                 last_error = _current_exc()
                 break
             except (LLMTimeoutError, LLMServerError) as exc:
@@ -146,18 +124,15 @@ class OpenAICompatibleAdapter:
                 if attempt <= self.max_retries:
                     warnings.append(f"Retry {attempt}/{self.max_retries}: {exc}")
 
-        status = _classify_error(last_error) or "unknown"
+        status, error_type = _map_error(last_error)
         return LLMResponse(
-            provider="openai_compatible",
-            model=self.model,
-            latency_ms=0.0,
-            warnings=warnings + [f"Call failed: {status}"],
+            provider="openai_compatible", model=self.model,
+            latency_ms=0.0, warnings=warnings,
+            status=status, error_type=error_type,
+            http_status=_http_status(last_error),
         )
 
-    def _build_request(
-        self, system: str, user_payload: dict[str, object],
-        schema: dict[str, object], max_tokens: int,
-    ) -> dict[str, object]:
+    def _build_request(self, system, user_payload, schema, max_tokens):
         return {
             "model": self.model,
             "messages": [
@@ -168,11 +143,7 @@ class OpenAICompatibleAdapter:
             "temperature": 0.0,
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {
-                    "name": "mcr_analysis",
-                    "strict": True,
-                    "schema": schema,
-                },
+                "json_schema": {"name": "mcr_analysis", "strict": True, "schema": schema},
             },
         }
 
@@ -183,39 +154,34 @@ class OpenAICompatibleAdapter:
         try:
             if parsed_url.scheme == "https":
                 conn = http.client.HTTPSConnection(
-                    parsed_url.hostname or "localhost",
-                    parsed_url.port or 443,
-                    timeout=timeout,
-                )
+                    parsed_url.hostname or "localhost", parsed_url.port or 443, timeout=timeout)
             else:
                 conn = http.client.HTTPConnection(
-                    parsed_url.hostname or "localhost",
-                    parsed_url.port or 80,
-                    timeout=timeout,
-                )
+                    parsed_url.hostname or "localhost", parsed_url.port or 80, timeout=timeout)
             path = parsed_url.path or "/chat/completions"
             if parsed_url.query:
                 path += "?" + parsed_url.query
-            headers = {
-                "Content-Type": "application/json; charset=utf-8",
-                "Accept": "application/json",
-            }
+            headers = {"Content-Type": "application/json; charset=utf-8", "Accept": "application/json"}
             if self._api_key:
                 headers["Authorization"] = f"Bearer {self._api_key}"
             conn.request("POST", path, body=body_bytes, headers=headers)
             response = conn.getresponse()
             status = response.status
-            raw = response.read().decode("utf-8")
+            raw = response.read(MAX_RESPONSE_BYTES).decode("utf-8", errors="replace")
+            # Check if truncated
+            if len(response.read(1)) > 0:
+                raise LLMAdapterError(
+                    "Response exceeds maximum size", http_status=status)
             latency_ms = round((time.monotonic() - t0) * 1000, 1)
 
             if status in (401, 403):
-                raise LLMAuthError(f"Authentication failed (HTTP {status})")
+                raise LLMAuthError(f"Authentication failed (HTTP {status})", http_status=status)
             if status in NON_RETRYABLE_HTTP:
-                raise LLMHttpError(f"HTTP {status}", status)
+                raise LLMHttpError(f"HTTP {status}", http_status=status)
             if status in RETRYABLE_HTTP:
-                raise LLMServerError(f"HTTP {status}", status)
+                raise LLMServerError(f"HTTP {status}", http_status=status)
             if status >= 500:
-                raise LLMServerError(f"HTTP {status}", status)
+                raise LLMServerError(f"HTTP {status}", http_status=status)
             if status != 200:
                 detail = ""
                 try:
@@ -223,7 +189,7 @@ class OpenAICompatibleAdapter:
                     detail = error_body.get("error", {}).get("message", raw[:200])
                 except Exception:
                     detail = raw[:200]
-                raise LLMAdapterError(f"HTTP {status}: {detail}" if detail else f"HTTP {status}")
+                raise LLMAdapterError(f"HTTP {status}: {detail}", http_status=status)
             return raw, latency_ms
         except (LLMAuthError, LLMHttpError, LLMServerError, LLMResponseError, LLMAdapterError):
             raise
@@ -258,6 +224,12 @@ class OpenAICompatibleAdapter:
             return json.loads(content)  # type: ignore[no-any-return]
         except json.JSONDecodeError as exc:
             raise LLMResponseError(f"Unable to parse content as JSON: {exc}", cause=exc)
+
+
+def _http_status(exc: BaseException | None) -> int | None:
+    if isinstance(exc, LLMAdapterError):
+        return exc.http_status
+    return None
 
 
 def _current_exc() -> BaseException | None:

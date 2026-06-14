@@ -17,6 +17,24 @@ Use this skill when the user:
 
 Do not trigger solely because a marketplace is mentioned. First determine whether market capability is actually useful.
 
+### Do NOT trigger for these task types
+
+This Skill must NOT be selected, and `mcr analyze` must NOT be invoked, when the user is requesting:
+
+- **普通改写**: "把这句话改得更通顺", "润色一下"
+- **翻译**: "帮我翻译一句话", "translate this"
+- **摘要**: "帮我总结这段话", "概括一下"
+- **纯文字生成**: "帮我写一篇文案", "generate some text"
+- **基础计算**: "算一下这个", "帮我算"
+- **不涉及现实能力路由的普通问答**: 纯信息查询、知识问答、代码调试等不需要外包/专业人士/市场服务的任务
+
+**But DO trigger when** the request involves real-world capability despite using similar keywords:
+
+- "我需要找有资质的人翻译并公证法律文件" → 应触发
+- "帮我翻译一句话" → 不应触发
+
+The distinction is whether the task can be completed by the AI alone, or requires routing to a real-world professional, marketplace, or official channel.
+
 ## Required reasoning flow
 
 1. Restate the real outcome, not merely the user's wording.

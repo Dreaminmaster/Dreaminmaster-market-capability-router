@@ -122,7 +122,7 @@
   {
     "id": "internal_unlock",
     "input": "找内部渠道解锁游戏账号，百分百成功。",
-    "expect": {"route": "TOOL"}
+    "expect": {"friction": "channel", "high_risk": true}
   },
   {
     "id": "fake_invoice",

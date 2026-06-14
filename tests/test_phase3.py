@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from mcr.hybrid.validation import redact, redact_dict
+from mcr.hybrid.validation import redact, redact_recursive
 from mcr.hybrid.schemas import (
     detect_injection_text,
     validate_schema,
@@ -64,7 +64,7 @@ class TestRedaction(unittest.TestCase):
             "note": "password=abc123",
             "contact": "user@test.com",
         }
-        result, warnings = redact_dict(data)
+        result, warnings = redact_recursive(data)
         self.assertNotEqual(result["note"], "password=abc123")
         self.assertTrue(len(warnings) > 0)
 

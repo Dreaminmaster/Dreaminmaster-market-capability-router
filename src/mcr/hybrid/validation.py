@@ -1,4 +1,4 @@
-"""Validate and redact data before model enrichment (recursive redaction)."""
+"""Validate and redact data recursively. Strings first, then containers."""
 
 from __future__ import annotations
 
@@ -20,8 +20,7 @@ _add(r"\S+@\S+\.\S{2,}", "[邮箱已脱敏]")
 _add(r"\b1[3-9]\d{9}\b", "[手机号已脱敏]")
 _add(
     r"[\"']?(?:password|passwd|pwd|secret|token|api_key)[\"']?\s*[:=]\s*[\"']?\S+[\"']?",
-    "[凭据已脱敏]",
-    re.IGNORECASE,
+    "[凭据已脱敏]", re.IGNORECASE,
 )
 
 
@@ -36,10 +35,20 @@ def redact(text: str) -> tuple[str, list[str]]:
 
 
 def redact_recursive(obj: Any, _seen: set | None = None) -> tuple[Any, list[str]]:
-    """Recursively redact all strings in nested dict/list/tuple/string.
+    """Recursively redact strings in nested structures.
 
-    Returns (redacted_obj, warnings).
+    Strings are processed first (before _seen checks for containers)
+    so duplicate references to the same string are all redacted.
     """
+    # String first
+    if isinstance(obj, str):
+        return redact(obj)
+
+    # Non-container
+    if not isinstance(obj, (dict, list, tuple)):
+        return obj, []
+
+    # Container with cycle detection
     if _seen is None:
         _seen = set()
     obj_id = id(obj)
@@ -47,30 +56,24 @@ def redact_recursive(obj: Any, _seen: set | None = None) -> tuple[Any, list[str]
         return obj, []
     _seen.add(obj_id)
 
-    if isinstance(obj, str):
-        return redact(obj)
     if isinstance(obj, dict):
         all_warnings: list[str] = []
         result = {}
         for k, v in obj.items():
-            redacted_val, warnings = redact_recursive(v, _seen)
+            rv, warnings = redact_recursive(v, _seen)
             all_warnings.extend(warnings)
-            result[k] = redacted_val
+            result[k] = rv
         return result, _uniq(all_warnings)
-    if isinstance(obj, (list, tuple)):
-        all_warnings = []
-        result = []
-        for v in obj:
-            redacted_val, warnings = redact_recursive(v, _seen)
-            all_warnings.extend(warnings)
-            result.append(redacted_val)
-        return result, _uniq(all_warnings)
-    return obj, []
 
-
-def redact_dict(data: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """Shallow redact for backward compatibility — prefer redact_recursive."""
-    return redact_recursive(data)  # type: ignore[return-value]
+    # list/tuple
+    all_warnings = []
+    result = []
+    for v in obj:
+        rv, warnings = redact_recursive(v, _seen)
+        all_warnings.extend(warnings)
+        result.append(rv)
+    tp = type(obj)
+    return tp(result), _uniq(all_warnings)
 
 
 def _uniq(items: list[str]) -> list[str]:

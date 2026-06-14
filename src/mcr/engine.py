@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from .adapters.llm.base import LLMAdapter
+from .adapters.llm.base import (
+    LLMAdapter, LLMResponse,
+    STATUS_NOT_CONFIGURED, STATUS_OK, STATUS_TIMEOUT,
+    STATUS_CONNECTION_ERROR, STATUS_AUTH_ERROR, STATUS_HTTP_ERROR,
+    STATUS_INVALID_JSON, STATUS_SCHEMA_ERROR, STATUS_RESPONSE_TOO_LARGE,
+    STATUS_PROMPT_INJECTION,
+)
 from .dialect import PlatformDialectEngine
 from .friction import FrictionDiagnoser
 from .models import AnalysisResult
@@ -41,9 +47,7 @@ class MarketCapabilityRouter:
 
         human_gates: list[str] = []
         if any(r.human_gate for r in routes):
-            human_gates.append(
-                "在提供敏感资料、付款、签字、登录或正式提交前由用户本人确认"
-            )
+            human_gates.append("在提供敏感资料、付款、签字、登录或正式提交前由用户本人确认")
         if risk_flags:
             human_gates.append("先核实风险信号，不因相关度高而跳过验证")
 
@@ -73,33 +77,27 @@ class MarketCapabilityRouter:
         )
 
     def analyze_with_model(
-        self,
-        text: str,
-        *,
-        adapter: LLMAdapter | None,
-        config: LLMConfig | None = None,
+        self, text: str, *, adapter: LLMAdapter | None, config: LLMConfig | None = None,
     ) -> dict[str, Any]:
-        """Run rules analysis, optionally enrich with model.
-
-        Returns a dict suitable for JSON serialization.
-        """
         rule_result = self.analyze(text)
         warnings: list[str] = []
 
-        # ── simple task gate ──
+        # Simple task gate
         if not should_use_capability_router(text):
             return merge_analysis(rule_result, None, warnings)
 
-        # ── not configured ──
+        # Not configured
         if adapter is None or config is None or not config.configured:
-            return merge_analysis(rule_result, None, warnings)
+            result = merge_analysis(rule_result, None, warnings)
+            result["model_enrichment"]["attempted"] = False
+            result["model_enrichment"]["status"] = STATUS_NOT_CONFIGURED
+            return result
 
-        # ── redact ──
+        # Redact
         from .hybrid.validation import redact_recursive
         redacted_text, redact_warnings = redact_recursive(text)
         warnings.extend(redact_warnings)
 
-        # ── model call ──
         from .hybrid.prompts import SYSTEM_PROMPT, build_user_payload
         from .hybrid.schemas import ANALYSIS_SCHEMA, validate_schema
 
@@ -116,65 +114,42 @@ class MarketCapabilityRouter:
         )
 
         model_payload: dict[str, Any] | None = None
-        model_status = "not_configured"
+        model_status = STATUS_NOT_CONFIGURED
         attempted = False
 
         try:
             attempted = True
-            response = adapter.complete_json(
-                system=SYSTEM_PROMPT,
-                user_payload=user_payload,
-                schema=ANALYSIS_SCHEMA,
-                timeout_seconds=config.timeout_seconds,
+            response: LLMResponse = adapter.complete_json(
+                system=SYSTEM_PROMPT, user_payload=user_payload,
+                schema=ANALYSIS_SCHEMA, timeout_seconds=config.timeout_seconds,
             )
             warnings.extend(response.warnings)
+            model_status = response.status
 
-            if response.success and response.parsed:
+            if response.status == STATUS_OK and response.parsed:
                 model_payload = response.parsed
-                # Injection check first
-                from .hybrid.merge import _check_injection_recursive
+                # Injection check FIRST (before schema, so status is correct)
+                from mcr.hybrid.merge import _check_injection_recursive
                 if _check_injection_recursive(model_payload):
-                    warnings.append("Prompt injection detected in model output, discarding enrichment")
+                    warnings.append("Prompt injection detected in model output")
                     model_payload = None
-                    model_status = "prompt_injection_warning"
+                    model_status = STATUS_PROMPT_INJECTION
                 else:
-                    # Schema validation
                     schema_errors = validate_schema(model_payload)
                     if schema_errors:
-                        warnings.append("Model schema validation failed, discarding enrichment")
+                        warnings.append("Schema validation failed")
                         warnings.extend(schema_errors)
                         model_payload = None
-                        model_status = "schema_error"
-                    else:
-                        model_status = "ok"
-            else:
-                if response.warnings:
-                    for w in response.warnings:
-                        if "auth" in w.lower() or "unauthorized" in w.lower():
-                            model_status = "auth_error"
-                            break
-                        if "timeout" in w.lower():
-                            model_status = "timeout"
-                            break
-                    if not model_status or model_status == "not_configured":
-                        model_status = "invalid_json"
-                else:
-                    model_status = "invalid_json"
-        except Exception as exc:
+                        model_status = STATUS_SCHEMA_ERROR
+            elif response.status == STATUS_OK and not response.parsed:
+                model_status = STATUS_INVALID_JSON
+            # else: preserve the status from adapter (timeout, connection_error, etc.)
+        except Exception:
             attempted = True
-            msg = str(exc).lower()
-            if "auth" in msg or "unauthorized" in msg:
-                model_status = "auth_error"
-            elif "timeout" in msg or "timed out" in msg:
-                model_status = "timeout"
-            elif "connection" in msg or "refused" in msg:
-                model_status = "connection_error"
-            else:
-                model_status = "connection_error"
-            warnings.append(f"Model call failed: {exc}")
+            model_status = STATUS_CONNECTION_ERROR
+            warnings.append(f"Model adapter raised exception")
 
         merged = merge_analysis(rule_result, model_payload, warnings)
-        if "model_enrichment" in merged:
-            merged["model_enrichment"]["attempted"] = attempted
-            merged["model_enrichment"]["status"] = model_status
+        merged["model_enrichment"]["attempted"] = attempted
+        merged["model_enrichment"]["status"] = model_status
         return merged

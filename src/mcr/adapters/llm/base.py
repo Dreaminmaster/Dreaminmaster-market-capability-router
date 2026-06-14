@@ -6,21 +6,22 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 from collections.abc import Callable
 
+# ── Status strings ────────────────────────────────────────────────────
+
+STATUS_NOT_CONFIGURED = "not_configured"
+STATUS_OK = "ok"
+STATUS_TIMEOUT = "timeout"
+STATUS_CONNECTION_ERROR = "connection_error"
+STATUS_AUTH_ERROR = "auth_error"
+STATUS_HTTP_ERROR = "http_error"
+STATUS_INVALID_JSON = "invalid_json"
+STATUS_SCHEMA_ERROR = "schema_error"
+STATUS_RESPONSE_TOO_LARGE = "response_too_large"
+STATUS_PROMPT_INJECTION = "prompt_injection_warning"
+
 
 @dataclass
 class LLMResponse:
-    """A structured response from any compatible LLM endpoint.
-
-    Keys:
-    - provider: transport label (e.g. "openai_compatible", "fake").
-    - model: resolved model name.
-    - parsed: deserialized JSON dict; None when parsing failed.
-    - latency_ms: round-trip wall-clock milliseconds.
-    - usage: optional token counts.
-    - request_id: optional provider-issued identifier.
-    - warnings: human-readable notes (redaction applied, injection detected, etc.).
-    """
-
     provider: str
     model: str
     raw_text: str = ""
@@ -29,6 +30,10 @@ class LLMResponse:
     usage: dict[str, int] | None = None
     request_id: str = ""
     warnings: list[str] = field(default_factory=list)
+    # ── v0.2 review: structured status ──
+    status: str = STATUS_OK
+    error_type: str = ""
+    http_status: int | None = None
 
     @property
     def success(self) -> bool:
@@ -37,8 +42,6 @@ class LLMResponse:
 
 @runtime_checkable
 class LLMAdapter(Protocol):
-    """Provider-independent protocol for structured JSON completion."""
-
     def complete_json(
         self,
         *,

@@ -100,19 +100,19 @@ class TestAdapterRequestShape(unittest.TestCase):
 
 class TestErrorClassification(unittest.TestCase):
     def test_auth_error_not_retryable(self):
-        from mcr.adapters.llm.openai_compatible import _classify_error
-        self.assertEqual(_classify_error(LLMAuthError("bad key")), "auth_error")
+        from mcr.adapters.llm.openai_compatible import _map_error, LLMAuthError
+        s, t = _map_error(LLMAuthError("bad key"))
+        self.assertIn("auth", s)
 
     def test_timeout_error(self):
-        from mcr.adapters.llm.openai_compatible import _classify_error
-        self.assertEqual(_classify_error(LLMTimeoutError("too slow")), "timeout")
+        from mcr.adapters.llm.openai_compatible import _map_error, LLMTimeoutError
+        s, t = _map_error(LLMTimeoutError("too slow"))
+        self.assertIn("timeout", s)
 
     def test_response_error(self):
-        from mcr.adapters.llm.openai_compatible import _classify_error
-        self.assertEqual(
-            _classify_error(LLMResponseError("Unable to parse JSON")),
-            "invalid_json",
-        )
+        from mcr.adapters.llm.openai_compatible import _map_error, LLMResponseError
+        s, t = _map_error(LLMResponseError("Unable to parse JSON"))
+        self.assertIn("invalid_json", s)
 
 
 if __name__ == "__main__":

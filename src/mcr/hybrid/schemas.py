@@ -1,4 +1,4 @@
-"""Versioned structured-output schemas with deep validation for v0.2."""
+"""Versioned structured-output schemas with deep recursive validation (v0.2 review)."""
 
 from __future__ import annotations
 
@@ -15,15 +15,8 @@ MAX_ARRAY_LENGTH = 60
 MAX_STRING_LENGTH = 500
 
 TOP_LEVEL_REQUIRED = [
-    "schema_version",
-    "real_goal",
-    "friction_hypotheses",
-    "task_hypotheses",
-    "profession_terms",
-    "service_terms",
-    "query_terms",
-    "unknown_dialect_hypotheses",
-    "warnings",
+    "schema_version", "real_goal", "friction_hypotheses", "task_hypotheses",
+    "profession_terms", "service_terms", "query_terms", "unknown_dialect_hypotheses", "warnings",
 ]
 
 ANALYSIS_SCHEMA: dict[str, Any] = {
@@ -33,25 +26,24 @@ ANALYSIS_SCHEMA: dict[str, Any] = {
         "schema_version": {"type": "string", "const": "0.2"},
         "real_goal": {"type": "string", "maxLength": MAX_STRING_LENGTH},
         "friction_hypotheses": {
-            "type": "array",
-            "maxItems": MAX_ARRAY_LENGTH,
+            "type": "array", "maxItems": MAX_ARRAY_LENGTH,
             "items": {
                 "type": "object",
                 "required": ["type", "confidence", "evidence", "uncertainty"],
                 "properties": {
                     "type": {"type": "string", "enum": sorted(VALID_FRICTION_TYPES)},
-                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "confidence": {"type": "number"},
                     "evidence": {"type": "array", "items": {"type": "string"}},
                     "uncertainty": {"type": "string"},
                 },
             },
         },
         "task_hypotheses": {
-            "type": "array",
-            "maxItems": MAX_ARRAY_LENGTH,
+            "type": "array", "maxItems": MAX_ARRAY_LENGTH,
             "items": {
                 "type": "object",
-                "required": ["title", "expected_deliverable", "suggested_routes", "requires_user_action", "sensitivity"],
+                "required": ["title", "expected_deliverable", "suggested_routes",
+                            "requires_user_action", "sensitivity"],
                 "properties": {
                     "title": {"type": "string", "maxLength": MAX_STRING_LENGTH},
                     "expected_deliverable": {"type": "string", "maxLength": MAX_STRING_LENGTH},
@@ -68,15 +60,14 @@ ANALYSIS_SCHEMA: dict[str, Any] = {
         "service_terms": {"type": "array", "items": {"type": "string"}, "maxItems": MAX_ARRAY_LENGTH},
         "query_terms": {"type": "array", "items": {"type": "string"}, "maxItems": MAX_ARRAY_LENGTH},
         "unknown_dialect_hypotheses": {
-            "type": "array",
-            "maxItems": MAX_ARRAY_LENGTH,
+            "type": "array", "maxItems": MAX_ARRAY_LENGTH,
             "items": {
                 "type": "object",
                 "required": ["term", "possible_meanings", "confidence", "evidence_required"],
                 "properties": {
                     "term": {"type": "string"},
                     "possible_meanings": {"type": "array", "items": {"type": "string"}},
-                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "confidence": {"type": "number"},
                     "evidence_required": {"type": "array", "items": {"type": "string"}},
                 },
             },
@@ -95,30 +86,50 @@ _INJECTION_PATTERNS = [
 ]
 
 
-def _check_field_type(val: Any, expected: str, path: str, errors: list[str]) -> None:
-    if expected == "string" and not isinstance(val, str):
+def _is_number(val: Any) -> bool:
+    """True for int/float but NOT bool (since isinstance(True, int)==True)."""
+    if isinstance(val, bool):
+        return False
+    return isinstance(val, (int, float))
+
+
+def _check_string(val: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(val, str):
         errors.append(f"{path}: expected string, got {type(val).__name__}")
-    elif expected == "number" and not isinstance(val, (int, float)):
+    elif len(val) > MAX_STRING_LENGTH:
+        errors.append(f"{path}: exceeds max length {MAX_STRING_LENGTH}")
+
+
+def _check_number(val: Any, path: str, errors: list[str]) -> None:
+    if not _is_number(val):
         errors.append(f"{path}: expected number, got {type(val).__name__}")
-    elif expected == "boolean" and not isinstance(val, bool):
+    elif not (0.0 <= float(val) <= 1.0):
+        errors.append(f"{path}: {val} not in [0,1]")
+
+
+def _check_bool(val: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(val, bool):
         errors.append(f"{path}: expected boolean, got {type(val).__name__}")
-    elif expected == "array" and not isinstance(val, list):
+
+
+def _check_str_array(val: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(val, list):
         errors.append(f"{path}: expected array, got {type(val).__name__}")
-    elif expected == "object" and not isinstance(val, dict):
-        errors.append(f"{path}: expected object, got {type(val).__name__}")
+        return
+    if len(val) > MAX_ARRAY_LENGTH:
+        errors.append(f"{path}: exceeds max length {MAX_ARRAY_LENGTH}")
+    for i, item in enumerate(val):
+        if not isinstance(item, str):
+            errors.append(f"{path}[{i}]: must be string")
 
 
 def validate_schema(payload: dict[str, Any]) -> list[str]:
-    """Recursively validate model output against the v0.2 schema.
-
-    Returns a list of error messages (empty means acceptable).
-    """
+    """Recursive deep validation of model output against v0.2 schema."""
     errors: list[str] = []
 
     if not isinstance(payload, dict):
         return ["Top-level payload must be an object"]
 
-    # Top-level required fields
     for key in TOP_LEVEL_REQUIRED:
         if key not in payload:
             errors.append(f"Missing required field: {key}")
@@ -126,30 +137,19 @@ def validate_schema(payload: dict[str, Any]) -> list[str]:
     if payload.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"schema_version must be {SCHEMA_VERSION!r}")
 
-    # real_goal
     rg = payload.get("real_goal")
-    if not isinstance(rg, str) or len(rg) > MAX_STRING_LENGTH:
-        errors.append("real_goal must be a short string")
-    elif isinstance(rg, str):
+    if isinstance(rg, str):
+        _check_string(rg, "real_goal", errors)
         _check_injection("real_goal", rg, errors)
+    elif rg is not None:
+        errors.append("real_goal: must be a string")
 
-    # friction_hypotheses
     _validate_frictions(payload.get("friction_hypotheses"), errors)
-
-    # task_hypotheses
     _validate_tasks(payload.get("task_hypotheses"), errors)
-
-    # unknown_dialect_hypotheses
     _validate_dialects(payload.get("unknown_dialect_hypotheses"), errors)
 
-    # Simple arrays
-    for field, item_type in [
-        ("profession_terms", "string"),
-        ("service_terms", "string"),
-        ("query_terms", "string"),
-        ("warnings", "string"),
-    ]:
-        _validate_str_array(payload.get(field), field, errors)
+    for field in ("profession_terms", "service_terms", "query_terms", "warnings"):
+        _check_str_array(payload.get(field), field, errors)
 
     return errors
 
@@ -169,23 +169,24 @@ def _validate_frictions(items: Any, errors: list[str]) -> None:
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
         ftype = item.get("type")
+        _check_string(ftype, f"{path}.type", errors)
         if isinstance(ftype, str) and ftype not in VALID_FRICTION_TYPES:
             errors.append(f"{path}.type: unknown friction type {ftype!r}")
-        elif not isinstance(ftype, str):
-            errors.append(f"{path}.type: must be a string")
         conf = item.get("confidence")
-        if isinstance(conf, str):
-            errors.append(f"{path}.confidence: must be a number, got string")
-        elif isinstance(conf, (int, float)):
-            if not (0.0 <= conf <= 1.0):
-                errors.append(f"{path}.confidence: {conf} not in [0,1]")
+        if conf is not None:
+            _check_number(conf, f"{path}.confidence", errors)
         ev = item.get("evidence")
-        if isinstance(ev, list):
+        if ev is not None and not isinstance(ev, list):
+            errors.append(f"{path}.evidence: must be array")
+        elif isinstance(ev, list):
             for j, e in enumerate(ev):
                 if not isinstance(e, str):
                     errors.append(f"{path}.evidence[{j}]: must be string")
-        if isinstance(item.get("uncertainty"), str):
-            _check_injection(f"{path}.uncertainty", item["uncertainty"], errors)
+        un = item.get("uncertainty")
+        if un is not None:
+            _check_string(un, f"{path}.uncertainty", errors)
+            if isinstance(un, str):
+                _check_injection(f"{path}.uncertainty", un, errors)
 
 
 def _validate_tasks(items: Any, errors: list[str]) -> None:
@@ -203,15 +204,15 @@ def _validate_tasks(items: Any, errors: list[str]) -> None:
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
         title = item.get("title")
-        if isinstance(title, str):
-            if len(title) > MAX_STRING_LENGTH:
-                errors.append(f"{path}.title: exceeds max length")
-            _check_injection(f"{path}.title", title, errors)
-        elif title is not None:
-            errors.append(f"{path}.title: must be a string")
+        if title is not None:
+            _check_string(title, f"{path}.title", errors)
+            if isinstance(title, str):
+                _check_injection(f"{path}.title", title, errors)
         deliverable = item.get("expected_deliverable")
-        if isinstance(deliverable, str):
-            _check_injection(f"{path}.expected_deliverable", deliverable, errors)
+        if deliverable is not None:
+            _check_string(deliverable, f"{path}.expected_deliverable", errors)
+            if isinstance(deliverable, str):
+                _check_injection(f"{path}.expected_deliverable", deliverable, errors)
         routes = item.get("suggested_routes")
         if isinstance(routes, list):
             for j, r in enumerate(routes):
@@ -222,10 +223,13 @@ def _validate_tasks(items: Any, errors: list[str]) -> None:
         elif routes is not None:
             errors.append(f"{path}.suggested_routes: must be array")
         sens = item.get("sensitivity")
-        if isinstance(sens, str) and sens not in VALID_SENSITIVITY:
-            errors.append(f"{path}.sensitivity: unknown value {sens!r}")
-        if isinstance(item.get("requires_user_action"), str):
-            errors.append(f"{path}.requires_user_action: must be boolean, got string")
+        if sens is not None:
+            _check_string(sens, f"{path}.sensitivity", errors)
+            if isinstance(sens, str) and sens not in VALID_SENSITIVITY:
+                errors.append(f"{path}.sensitivity: unknown value {sens!r}")
+        ua = item.get("requires_user_action")
+        if ua is not None:
+            _check_bool(ua, f"{path}.requires_user_action", errors)
 
 
 def _validate_dialects(items: Any, errors: list[str]) -> None:
@@ -242,28 +246,26 @@ def _validate_dialects(items: Any, errors: list[str]) -> None:
         for req in ("term", "possible_meanings", "confidence", "evidence_required"):
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
+        term = item.get("term")
+        if term is not None:
+            _check_string(term, f"{path}.term", errors)
         conf = item.get("confidence")
-        if isinstance(conf, str):
-            errors.append(f"{path}.confidence: must be a number, got string")
-        elif isinstance(conf, (int, float)):
-            if not (0.0 <= conf <= 1.0):
-                errors.append(f"{path}.confidence: {conf} not in [0,1]")
+        if conf is not None:
+            _check_number(conf, f"{path}.confidence", errors)
         meanings = item.get("possible_meanings")
         if isinstance(meanings, list):
             for j, m in enumerate(meanings):
                 if not isinstance(m, str):
                     errors.append(f"{path}.possible_meanings[{j}]: must be string")
-
-
-def _validate_str_array(val: Any, name: str, errors: list[str]) -> None:
-    if not isinstance(val, list):
-        errors.append(f"{name}: must be an array")
-        return
-    if len(val) > MAX_ARRAY_LENGTH:
-        errors.append(f"{name}: exceeds max length {MAX_ARRAY_LENGTH}")
-    for i, item in enumerate(val):
-        if not isinstance(item, str):
-            errors.append(f"{name}[{i}]: must be string")
+        elif meanings is not None:
+            errors.append(f"{path}.possible_meanings: must be array")
+        evidence = item.get("evidence_required")
+        if isinstance(evidence, list):
+            for j, e in enumerate(evidence):
+                if not isinstance(e, str):
+                    errors.append(f"{path}.evidence_required[{j}]: must be string")
+        elif evidence is not None:
+            errors.append(f"{path}.evidence_required: must be array")
 
 
 def _check_injection(field: str, value: str, errors: list[str]) -> None:
@@ -274,7 +276,6 @@ def _check_injection(field: str, value: str, errors: list[str]) -> None:
 
 
 def detect_injection_text(text: str) -> bool:
-    """Return True if text contains known prompt-injection patterns."""
     if not isinstance(text, str):
         return False
     return any(pattern.search(text) for pattern in _INJECTION_PATTERNS)

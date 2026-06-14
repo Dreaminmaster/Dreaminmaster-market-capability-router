@@ -6,7 +6,7 @@
 - Added structured-output schema (v0.2) with field validation and injection detection.
 - Added OpenAI-compatible adapter using stdlib (no external deps).
 - Added deterministic FakeAdapter for CI/testing with fixture responses.
-- Added configuration layer with precedence: CLI flag > env var > default.
+- Added configuration layer with precedence: CLI flag > env var > default (config file deferred).
 - Added sensitive-data redaction before model calls.
 - Added prompt-injection detection and data-envelope isolation.
 - Added deterministic hybrid merge engine with provenance tracking.
