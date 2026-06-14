@@ -8,10 +8,7 @@ import unittest
 
 from mcr.adapters.llm.openai_compatible import (
     OpenAICompatibleAdapter,
-    LLMAdapterError,
-    LLMAuthError,
-    LLMTimeoutError,
-    LLMResponseError,
+    _NonRetryable,
 )
 from mcr.adapters.llm.base import LLMResponse
 from mcr.hybrid.schemas import ANALYSIS_SCHEMA
@@ -53,25 +50,21 @@ class TestOpenAIAdapterParsing(unittest.TestCase):
         self.assertEqual(parsed["real_goal"], "test")
 
     def test_parse_no_choices(self):
-        with self.assertRaises(LLMResponseError):
+        with self.assertRaises(_NonRetryable):
             self._adapter()._parse('{"choices": []}')
 
     def test_parse_invalid_json(self):
-        with self.assertRaises(LLMResponseError):
+        with self.assertRaises(_NonRetryable):
             self._adapter()._parse("not json")
 
     def test_parse_invalid_content_json(self):
-        resp_data = {
-            "choices": [{"message": {"content": "not json either"}}],
-        }
-        with self.assertRaises(LLMResponseError):
+        resp_data = {"choices": [{"message": {"content": "not json either"}}]}
+        with self.assertRaises(_NonRetryable):
             self._adapter()._parse(json.dumps(resp_data))
 
     def test_parse_empty_content(self):
-        resp_data = {
-            "choices": [{"message": {"content": ""}}],
-        }
-        with self.assertRaises(LLMResponseError):
+        resp_data = {"choices": [{"message": {"content": ""}}]}
+        with self.assertRaises(_NonRetryable):
             self._adapter()._parse(json.dumps(resp_data))
 
 
@@ -100,19 +93,19 @@ class TestAdapterRequestShape(unittest.TestCase):
 
 class TestErrorClassification(unittest.TestCase):
     def test_auth_error_not_retryable(self):
-        from mcr.adapters.llm.openai_compatible import _map_error, LLMAuthError
-        s, t = _map_error(LLMAuthError("bad key"))
-        self.assertIn("auth", s)
-
-    def test_timeout_error(self):
-        from mcr.adapters.llm.openai_compatible import _map_error, LLMTimeoutError
-        s, t = _map_error(LLMTimeoutError("too slow"))
+        from mcr.adapters.llm.openai_compatible import _map_exc
+        s, t = _map_exc(TimeoutError())
         self.assertIn("timeout", s)
 
+    def test_timeout_error(self):
+        from mcr.adapters.llm.openai_compatible import _map_exc
+        s, t = _map_exc(ConnectionError())
+        self.assertIn("connection", s)
+
     def test_response_error(self):
-        from mcr.adapters.llm.openai_compatible import _map_error, LLMResponseError
-        s, t = _map_error(LLMResponseError("Unable to parse JSON"))
-        self.assertIn("invalid_json", s)
+        from mcr.adapters.llm.openai_compatible import _map_exc
+        s, t = _map_exc(OSError())
+        self.assertIn("connection", s)
 
 
 if __name__ == "__main__":

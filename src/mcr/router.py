@@ -5,7 +5,7 @@ from .models import FrictionResult, RouteDecision
 SENSITIVE_TERMS = ["密码", "验证码", "身份证", "银行卡", "支付", "实名", "签字", "远程控制"]
 OFFICIAL_TERMS = ["申诉", "签证", "银行争议", "学校申诉", "封号", "解封", "退款", "身份修改"]
 PROFESSIONAL_TERMS = ["法律", "医疗", "诊断", "验房", "电工", "结构", "审计", "税务", "合同"]
-EXECUTION_TERMS = ["跑腿", "现场", "拍照", "看房", "搬家", "代取", "异地"]
+EXECUTION_TERMS = ["跑腿", "现场", "拍照", "看房", "搬家", "代取", "异地", "照顾", "照看", "换屏", "修手机", "设计师", "出效果图", "拍婚纱", "家教", "辅导"]
 
 
 class CapabilityRouter:

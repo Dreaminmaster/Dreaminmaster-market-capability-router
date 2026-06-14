@@ -117,37 +117,30 @@ class MarketCapabilityRouter:
         model_status = STATUS_NOT_CONFIGURED
         attempted = False
 
-        try:
-            attempted = True
-            response: LLMResponse = adapter.complete_json(
-                system=SYSTEM_PROMPT, user_payload=user_payload,
-                schema=ANALYSIS_SCHEMA, timeout_seconds=config.timeout_seconds,
-            )
-            warnings.extend(response.warnings)
-            model_status = response.status
+        attempted = True
+        response: LLMResponse = adapter.complete_json(
+            system=SYSTEM_PROMPT, user_payload=user_payload,
+            schema=ANALYSIS_SCHEMA, timeout_seconds=config.timeout_seconds,
+        )
+        warnings.extend(response.warnings)
+        model_status = response.status
 
-            if response.status == STATUS_OK and response.parsed:
-                model_payload = response.parsed
-                # Injection check FIRST (before schema, so status is correct)
-                from mcr.hybrid.merge import _check_injection_recursive
-                if _check_injection_recursive(model_payload):
-                    warnings.append("Prompt injection detected in model output")
+        if response.status == STATUS_OK and response.parsed:
+            model_payload = response.parsed
+            from mcr.hybrid.merge import _check_injection_recursive
+            if _check_injection_recursive(model_payload):
+                warnings.append("Prompt injection detected in model output")
+                model_payload = None
+                model_status = STATUS_PROMPT_INJECTION
+            else:
+                schema_errors = validate_schema(model_payload)
+                if schema_errors:
+                    warnings.append("Schema validation failed")
+                    warnings.extend(schema_errors)
                     model_payload = None
-                    model_status = STATUS_PROMPT_INJECTION
-                else:
-                    schema_errors = validate_schema(model_payload)
-                    if schema_errors:
-                        warnings.append("Schema validation failed")
-                        warnings.extend(schema_errors)
-                        model_payload = None
-                        model_status = STATUS_SCHEMA_ERROR
-            elif response.status == STATUS_OK and not response.parsed:
-                model_status = STATUS_INVALID_JSON
-            # else: preserve the status from adapter (timeout, connection_error, etc.)
-        except Exception:
-            attempted = True
-            model_status = STATUS_CONNECTION_ERROR
-            warnings.append(f"Model adapter raised exception")
+                    model_status = STATUS_SCHEMA_ERROR
+        elif response.status == STATUS_OK and not response.parsed:
+            model_status = STATUS_INVALID_JSON
 
         merged = merge_analysis(rule_result, model_payload, warnings)
         merged["model_enrichment"]["attempted"] = attempted

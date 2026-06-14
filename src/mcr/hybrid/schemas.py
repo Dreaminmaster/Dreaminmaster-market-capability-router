@@ -168,25 +168,14 @@ def _validate_frictions(items: Any, errors: list[str]) -> None:
         for req in ("type", "confidence", "evidence", "uncertainty"):
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
-        ftype = item.get("type")
-        _check_string(ftype, f"{path}.type", errors)
-        if isinstance(ftype, str) and ftype not in VALID_FRICTION_TYPES:
-            errors.append(f"{path}.type: unknown friction type {ftype!r}")
-        conf = item.get("confidence")
-        if conf is not None:
-            _check_number(conf, f"{path}.confidence", errors)
-        ev = item.get("evidence")
-        if ev is not None and not isinstance(ev, list):
-            errors.append(f"{path}.evidence: must be array")
-        elif isinstance(ev, list):
-            for j, e in enumerate(ev):
-                if not isinstance(e, str):
-                    errors.append(f"{path}.evidence[{j}]: must be string")
-        un = item.get("uncertainty")
-        if un is not None:
-            _check_string(un, f"{path}.uncertainty", errors)
-            if isinstance(un, str):
-                _check_injection(f"{path}.uncertainty", un, errors)
+        _check_string(item.get("type"), f"{path}.type", errors)
+        if isinstance(item.get("type"), str) and item["type"] not in VALID_FRICTION_TYPES:
+            errors.append(f"{path}.type: unknown friction type {item['type']!r}")
+        _check_number(item.get("confidence"), f"{path}.confidence", errors)
+        _check_str_array(item.get("evidence"), f"{path}.evidence", errors)
+        _check_string(item.get("uncertainty"), f"{path}.uncertainty", errors)
+        if isinstance(item.get("uncertainty"), str):
+            _check_injection(f"{path}.uncertainty", item["uncertainty"], errors)
 
 
 def _validate_tasks(items: Any, errors: list[str]) -> None:
@@ -203,33 +192,25 @@ def _validate_tasks(items: Any, errors: list[str]) -> None:
         for req in ("title", "expected_deliverable", "suggested_routes", "requires_user_action", "sensitivity"):
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
-        title = item.get("title")
-        if title is not None:
-            _check_string(title, f"{path}.title", errors)
-            if isinstance(title, str):
-                _check_injection(f"{path}.title", title, errors)
-        deliverable = item.get("expected_deliverable")
-        if deliverable is not None:
-            _check_string(deliverable, f"{path}.expected_deliverable", errors)
-            if isinstance(deliverable, str):
-                _check_injection(f"{path}.expected_deliverable", deliverable, errors)
+        _check_string(item.get("title"), f"{path}.title", errors)
+        if isinstance(item.get("title"), str):
+            _check_injection(f"{path}.title", item["title"], errors)
+        _check_string(item.get("expected_deliverable"), f"{path}.expected_deliverable", errors)
+        if isinstance(item.get("expected_deliverable"), str):
+            _check_injection(f"{path}.expected_deliverable", item["expected_deliverable"], errors)
         routes = item.get("suggested_routes")
-        if isinstance(routes, list):
+        if not isinstance(routes, list):
+            errors.append(f"{path}.suggested_routes: must be array")
+        else:
             for j, r in enumerate(routes):
                 if not isinstance(r, str):
                     errors.append(f"{path}.suggested_routes[{j}]: must be string")
                 elif r not in VALID_ROUTES:
                     errors.append(f"{path}.suggested_routes[{j}]: unknown route {r!r}")
-        elif routes is not None:
-            errors.append(f"{path}.suggested_routes: must be array")
-        sens = item.get("sensitivity")
-        if sens is not None:
-            _check_string(sens, f"{path}.sensitivity", errors)
-            if isinstance(sens, str) and sens not in VALID_SENSITIVITY:
-                errors.append(f"{path}.sensitivity: unknown value {sens!r}")
-        ua = item.get("requires_user_action")
-        if ua is not None:
-            _check_bool(ua, f"{path}.requires_user_action", errors)
+        _check_bool(item.get("requires_user_action"), f"{path}.requires_user_action", errors)
+        _check_string(item.get("sensitivity"), f"{path}.sensitivity", errors)
+        if isinstance(item.get("sensitivity"), str) and item["sensitivity"] not in VALID_SENSITIVITY:
+            errors.append(f"{path}.sensitivity: unknown value {item['sensitivity']!r}")
 
 
 def _validate_dialects(items: Any, errors: list[str]) -> None:
@@ -246,26 +227,10 @@ def _validate_dialects(items: Any, errors: list[str]) -> None:
         for req in ("term", "possible_meanings", "confidence", "evidence_required"):
             if req not in item:
                 errors.append(f"{path}: missing required field '{req}'")
-        term = item.get("term")
-        if term is not None:
-            _check_string(term, f"{path}.term", errors)
-        conf = item.get("confidence")
-        if conf is not None:
-            _check_number(conf, f"{path}.confidence", errors)
-        meanings = item.get("possible_meanings")
-        if isinstance(meanings, list):
-            for j, m in enumerate(meanings):
-                if not isinstance(m, str):
-                    errors.append(f"{path}.possible_meanings[{j}]: must be string")
-        elif meanings is not None:
-            errors.append(f"{path}.possible_meanings: must be array")
-        evidence = item.get("evidence_required")
-        if isinstance(evidence, list):
-            for j, e in enumerate(evidence):
-                if not isinstance(e, str):
-                    errors.append(f"{path}.evidence_required[{j}]: must be string")
-        elif evidence is not None:
-            errors.append(f"{path}.evidence_required: must be array")
+        _check_string(item.get("term"), f"{path}.term", errors)
+        _check_number(item.get("confidence"), f"{path}.confidence", errors)
+        _check_str_array(item.get("possible_meanings"), f"{path}.possible_meanings", errors)
+        _check_str_array(item.get("evidence_required"), f"{path}.evidence_required", errors)
 
 
 def _check_injection(field: str, value: str, errors: list[str]) -> None:

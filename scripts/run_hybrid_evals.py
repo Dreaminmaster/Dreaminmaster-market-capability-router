@@ -19,7 +19,7 @@ from mcr.adapters.llm.base import (
     STATUS_AUTH_ERROR, STATUS_HTTP_ERROR, STATUS_INVALID_JSON,
     STATUS_SCHEMA_ERROR, STATUS_PROMPT_INJECTION,
 )
-from mcr.adapters.llm.openai_compatible import LLMTimeoutError, LLMHttpError
+# No longer importing exceptions from adapter (adapter returns structured status now)
 from mcr.hybrid.config import LLMConfig
 
 

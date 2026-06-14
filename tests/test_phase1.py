@@ -6,7 +6,7 @@ import unittest
 
 from mcr.adapters.llm.base import LLMAdapter, LLMResponse, STATUS_OK
 from mcr.adapters.llm.fake import FakeAdapter, FakeAdapterWithStatus, DEFAULT_FAKE_RESPONSE
-from mcr.adapters.llm.openai_compatible import _map_error, LLMTimeoutError, LLMAuthError, LLMHttpError
+from mcr.adapters.llm.openai_compatible import _map_exc, _NonRetryable
 from mcr.hybrid.schemas import validate_schema, detect_injection_text, SCHEMA_VERSION, VALID_FRICTION_TYPES, VALID_ROUTES
 from mcr.hybrid.config import resolve_config
 from mcr.hybrid.merge import merge_analysis
@@ -50,12 +50,12 @@ class TestFakeAdapter(unittest.TestCase):
 
 class TestErrorMap(unittest.TestCase):
     def test_timeout(self):
-        s, t = _map_error(LLMTimeoutError("x"))
+        s, t = _map_exc(TimeoutError())
         self.assertIn("timeout", s)
 
     def test_auth(self):
-        s, t = _map_error(LLMAuthError("x"))
-        self.assertIn("auth", s)
+        s, t = _map_exc(ConnectionError())
+        self.assertIn("connection", s)
 
 
 class TestSchemas(unittest.TestCase):

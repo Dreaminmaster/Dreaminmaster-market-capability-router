@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import AnalysisResult, FRICTIONS, ROUTES
+from ..risk import RiskEngine
 from .schemas import detect_injection_text
 
 SOURCE_RULE = "rule"
 SOURCE_MODEL = "model"
 STATUS_CANDIDATE = "candidate"
+
+_risk_engine = RiskEngine()
 
 
 def merge_analysis(
@@ -53,7 +56,12 @@ def merge_analysis(
         _merge_terms(result, model_payload)
         _merge_dialect(result, model_payload)
         _merge_model_warnings(result, model_payload)
+        _final_risk_scan(result)
     except Exception as exc:
+        enrichment["applied"] = False
+        enrichment["status"] = "merge_error"
+        enrichment["warnings"].append(f"Merge failed: {exc}")
+        result["route_hypotheses"] = []
         enrichment["applied"] = False
         enrichment["status"] = "merge_error"
         enrichment["warnings"].append(f"Merge failed: {exc}")
@@ -189,6 +197,53 @@ def _merge_model_warnings(result: dict, model: dict) -> None:
     if isinstance(warnings, list) and warnings:
         result.setdefault("model_enrichment", {}).setdefault("warnings", []).extend(
             [w for w in warnings if isinstance(w, str)])
+
+
+def _final_risk_scan(result: dict) -> None:
+    """Scan model-added content for risk signals. Only adds, never removes."""
+    parts: list[str] = []
+    # real_goal from evidence
+    for ev in result.get("evidence_trail", []):
+        if ev.get("item") == "real_goal":
+            parts.append(str(ev.get("value", "")))
+    # query_terms_model
+    ql = result.get("query_lattice", {})
+    for key in ("query_terms_model", "profession_terms_model", "service_terms_model"):
+        parts.extend([str(t) for t in ql.get(key, [])])
+    # route hypotheses
+    for h in result.get("route_hypotheses", []):
+        parts.append(h.get("task", ""))
+        parts.append(h.get("expected_deliverable", ""))
+    # dialect
+    for d in result.get("dialect_matches", []):
+        if d.get("source") == SOURCE_MODEL:
+            parts.append(d.get("term", ""))
+            parts.extend(d.get("possible_services", []))
+    # warnings
+    parts.extend([str(w) for w in result.get("model_enrichment", {}).get("warnings", [])])
+
+    text = " ".join(parts)
+    if not text.strip():
+        return
+
+    new_flags = _risk_engine.scan(text)
+    if new_flags:
+        existing_rule_ids = {rf.get("rule_id") for rf in result.get("risk_flags", [])}
+        result_risks: list[dict] = list(result.get("risk_flags", []))
+        for flag in new_flags:
+            if flag.rule_id not in existing_rule_ids:
+                result_risks.append({
+                    "rule_id": flag.rule_id,
+                    "category": flag.category,
+                    "severity": flag.severity,
+                    "matched_evidence": flag.matched_evidence,
+                    "explanation": flag.explanation,
+                    "recommended_action": flag.recommended_action,
+                    "human_confirmation_required": flag.human_confirmation_required,
+                    "source": SOURCE_MODEL,
+                    "status": STATUS_CANDIDATE,
+                })
+        result["risk_flags"] = result_risks
 
 
 def _check_injection_recursive(obj: Any, _seen: set | None = None) -> bool:

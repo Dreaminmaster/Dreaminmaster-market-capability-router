@@ -107,5 +107,18 @@
     "explanation": "可能暴露账号、文件和支付信息。",
     "recommended_action": "使用最小权限并由用户全程监督；高敏感任务拒绝远程控制。",
     "human_confirmation_required": true
+  },
+  {
+    "id": "fake_invoice",
+    "category": "policy_legality",
+    "severity": "high",
+    "signals": [
+      "开发票",
+      "代开发票",
+      "虚开"
+    ],
+    "explanation": "代开或虚开发票可能违法。",
+    "recommended_action": "仅通过正规渠道开具发票；拒绝可疑的代开服务。",
+    "human_confirmation_required": true
   }
 ]

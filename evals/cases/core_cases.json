@@ -72,7 +72,7 @@
   {
     "id": "pet_sitter",
     "input": "出差三天，需要找人照顾猫。",
-    "expect": {"route": "AI", "market": false}
+    "expect": {"route": "MARKET", "market": true}
   },
   {
     "id": "english_translation",
@@ -87,12 +87,12 @@
   {
     "id": "interior_design",
     "input": "新房装修想找设计师出效果图。",
-    "expect": {"route": "AI", "market": false}
+    "expect": {"route": "MARKET", "market": true}
   },
   {
     "id": "phone_repair",
     "input": "手机屏幕碎了，想找人换屏。",
-    "expect": {"route": "AI", "market": false}
+    "expect": {"route": "MARKET", "market": true}
   },
   {
     "id": "passport_renewal",
@@ -102,12 +102,12 @@
   {
     "id": "wedding_photo",
     "input": "想找摄影师拍婚纱照，预算一万以内。",
-    "expect": {"route": "AI", "market": false}
+    "expect": {"route": "MARKET", "market": true}
   },
   {
     "id": "math_tutoring",
     "input": "孩子数学成绩下降，想找家教辅导。",
-    "expect": {"route": "AI", "market": false}
+    "expect": {"route": "MARKET", "market": true}
   },
   {
     "id": "car_maintenance",
@@ -127,7 +127,7 @@
   {
     "id": "fake_invoice",
     "input": "需要找人开发票，金额大一点。",
-    "expect": {"route": "AI", "no_risk": true}
+    "expect": {"high_risk": true}
   },
   {
     "id": "photo_retouch",
