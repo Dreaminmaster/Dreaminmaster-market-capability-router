@@ -1,15 +1,6 @@
-"""OpenAI-compatible chat-completions adapter.
+"""OpenAI-compatible chat-completions adapter with proper status classification.
 
-Supports hosted providers, LM Studio, and local endpoints.
-Uses only Python standard library (no external HTTP deps).
-
-Key features:
-- Configurable base URL and model
-- Optional API key (local endpoints may not require one)
-- Mandatory timeout
-- Bounded retry for transport errors only
-- Never logs or returns API keys
-- No retry on auth errors or invalid schemas
+Uses only Python standard library.
 """
 
 from __future__ import annotations
@@ -18,35 +9,80 @@ import json
 import http.client
 import time
 import urllib.parse
-import urllib.error
 from typing import Any
 
 from .base import LLMResponse
 
 
 class LLMAdapterError(RuntimeError):
-    """Raised for transport-level failures."""
-
     def __init__(self, message: str, *, cause: BaseException | None = None):
         super().__init__(message)
         self.cause = cause
 
 
 class LLMAuthError(LLMAdapterError):
-    """Raised on authentication (401/403) errors."""
+    pass
 
 
 class LLMTimeoutError(LLMAdapterError):
-    """Raised when the request exceeds the configured timeout."""
+    pass
 
 
 class LLMResponseError(LLMAdapterError):
-    """Raised when the response cannot be parsed to valid JSON."""
+    pass
+
+
+class LLMHttpError(LLMAdapterError):
+    """Non-retryable HTTP client error (4xx except 429)."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+class LLMServerError(LLMAdapterError):
+    """Potentially retryable server error (5xx)."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+RETRYABLE_HTTP = {429, 502, 503, 504}
+NON_RETRYABLE_HTTP = {400, 401, 403, 404}
+
+
+MODEL_STATUS_NOT_CONFIGURED = "not_configured"
+MODEL_STATUS_OK = "ok"
+MODEL_STATUS_TIMEOUT = "timeout"
+MODEL_STATUS_CONNECTION_ERROR = "connection_error"
+MODEL_STATUS_AUTH_ERROR = "auth_error"
+MODEL_STATUS_HTTP_ERROR = "http_error"
+MODEL_STATUS_INVALID_JSON = "invalid_json"
+MODEL_STATUS_SCHEMA_ERROR = "schema_error"
+MODEL_STATUS_RESPONSE_TOO_LARGE = "response_too_large"
+MODEL_STATUS_PROMPT_INJECTION = "prompt_injection_warning"
+
+
+def _classify_error(exc: BaseException | None) -> str | None:
+    if exc is None:
+        return None
+    if isinstance(exc, LLMAuthError):
+        return MODEL_STATUS_AUTH_ERROR
+    if isinstance(exc, LLMTimeoutError):
+        return MODEL_STATUS_TIMEOUT
+    if isinstance(exc, LLMResponseError):
+        if "Unable to parse" in str(exc):
+            return MODEL_STATUS_INVALID_JSON
+        return MODEL_STATUS_INVALID_JSON
+    if isinstance(exc, LLMHttpError):
+        return MODEL_STATUS_HTTP_ERROR
+    if isinstance(exc, LLMServerError):
+        return MODEL_STATUS_HTTP_ERROR
+    return MODEL_STATUS_CONNECTION_ERROR
 
 
 class OpenAICompatibleAdapter:
-    """Standard-library HTTP adapter for OpenAI-compatible endpoints."""
-
     def __init__(
         self,
         base_url: str,
@@ -65,8 +101,6 @@ class OpenAICompatibleAdapter:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
 
-    # ── public API ───────────────────────────────────────────────────────
-
     def complete_json(
         self,
         *,
@@ -78,13 +112,12 @@ class OpenAICompatibleAdapter:
     ) -> LLMResponse:
         timeout = timeout_seconds or self.timeout_seconds
         warnings: list[str] = []
-
-        # Build the request body
         body = self._build_request(system, user_payload, schema, max_tokens)
         body_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
 
         last_error: BaseException | None = None
-        for attempt in range(self.max_retries + 1):
+        attempt: int = 0
+        while attempt <= self.max_retries:
             try:
                 raw_text, latency_ms = self._send(body_bytes, timeout)
                 parsed = self._parse(raw_text)
@@ -96,49 +129,41 @@ class OpenAICompatibleAdapter:
                     latency_ms=latency_ms,
                     warnings=warnings,
                 )
-            except LLMAuthError:
-                raise  # Never retry auth errors
-            except LLMTimeoutError as exc:
+            except (LLMAuthError, LLMHttpError):
+                raise  # Never retry
+            except LLMResponseError:
+                # Invalid JSON from a valid HTTP response — don't retry
+                last_error = _current_exc()
+                break
+            except (LLMTimeoutError, LLMServerError) as exc:
                 last_error = exc
-            except LLMResponseError as exc:
-                last_error = exc
-                # Don't retry if we got a valid HTTP response but bad JSON
-                if "Unable to parse" in str(exc):
-                    break
+                attempt += 1
+                if attempt <= self.max_retries:
+                    warnings.append(f"Retry {attempt}/{self.max_retries}: {exc}")
             except LLMAdapterError as exc:
                 last_error = exc
+                attempt += 1
+                if attempt <= self.max_retries:
+                    warnings.append(f"Retry {attempt}/{self.max_retries}: {exc}")
 
-            if attempt < self.max_retries:
-                warnings.append(f"Retry {attempt + 1}/{self.max_retries}: {last_error}")
-
-        # All retries exhausted — return failure response
-        status = _classify_error(last_error)
+        status = _classify_error(last_error) or "unknown"
         return LLMResponse(
             provider="openai_compatible",
             model=self.model,
             latency_ms=0.0,
-            warnings=warnings + [f"Call failed: {type(status)}"],
+            warnings=warnings + [f"Call failed: {status}"],
         )
 
-    # ── internals ─────────────────────────────────────────────────────────
-
     def _build_request(
-        self,
-        system: str,
-        user_payload: dict[str, object],
-        schema: dict[str, object],
-        max_tokens: int,
+        self, system: str, user_payload: dict[str, object],
+        schema: dict[str, object], max_tokens: int,
     ) -> dict[str, object]:
-        messages: list[dict[str, object]] = [
-            {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": json.dumps(user_payload, ensure_ascii=False),
-            },
-        ]
         return {
             "model": self.model,
-            "messages": messages,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+            ],
             "max_tokens": max_tokens,
             "temperature": 0.0,
             "response_format": {
@@ -154,7 +179,7 @@ class OpenAICompatibleAdapter:
     def _send(self, body_bytes: bytes, timeout: float) -> tuple[str, float]:
         parsed_url = urllib.parse.urlparse(self.base_url + "/chat/completions")
         t0 = time.monotonic()
-
+        conn = None
         try:
             if parsed_url.scheme == "https":
                 conn = http.client.HTTPSConnection(
@@ -168,96 +193,73 @@ class OpenAICompatibleAdapter:
                     parsed_url.port or 80,
                     timeout=timeout,
                 )
-
             path = parsed_url.path or "/chat/completions"
             if parsed_url.query:
                 path += "?" + parsed_url.query
-
             headers = {
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
             }
             if self._api_key:
                 headers["Authorization"] = f"Bearer {self._api_key}"
-
             conn.request("POST", path, body=body_bytes, headers=headers)
             response = conn.getresponse()
             status = response.status
             raw = response.read().decode("utf-8")
-
             latency_ms = round((time.monotonic() - t0) * 1000, 1)
 
             if status in (401, 403):
                 raise LLMAuthError(f"Authentication failed (HTTP {status})")
-
+            if status in NON_RETRYABLE_HTTP:
+                raise LLMHttpError(f"HTTP {status}", status)
+            if status in RETRYABLE_HTTP:
+                raise LLMServerError(f"HTTP {status}", status)
+            if status >= 500:
+                raise LLMServerError(f"HTTP {status}", status)
             if status != 200:
-                # Try to extract error detail from response
                 detail = ""
                 try:
                     error_body = json.loads(raw)
                     detail = error_body.get("error", {}).get("message", raw[:200])
                 except Exception:
                     detail = raw[:200]
-                raise LLMAdapterError(
-                    f"HTTP {status}: {detail}" if detail else f"HTTP {status}"
-                )
-
+                raise LLMAdapterError(f"HTTP {status}: {detail}" if detail else f"HTTP {status}")
             return raw, latency_ms
-
-        except (LLMAuthError, LLMAdapterError):
+        except (LLMAuthError, LLMHttpError, LLMServerError, LLMResponseError, LLMAdapterError):
             raise
-        except http.client.HTTPException as exc:
-            raise LLMAdapterError(str(exc), cause=exc)
         except TimeoutError as exc:
             raise LLMTimeoutError("Request timed out", cause=exc)
+        except http.client.HTTPException as exc:
+            raise LLMAdapterError(str(exc), cause=exc)
         except OSError as exc:
             raise LLMAdapterError(f"Connection error: {exc}", cause=exc)
         finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _parse(self, raw_text: str) -> dict[str, object]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError as exc:
-            raise LLMResponseError(
-                f"Unable to parse model response as JSON: {exc}",
-                cause=exc,
-            )
-
-        # OpenAI chat completion shape
+            raise LLMResponseError(f"Unable to parse model response as JSON: {exc}", cause=exc)
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
             raise LLMResponseError("No choices in response")
-
         message = choices[0].get("message")
         if not isinstance(message, dict):
             raise LLMResponseError("Invalid message in response")
-
         content = message.get("content", "")
         if not isinstance(content, str) or not content.strip():
             raise LLMResponseError("Empty content in response")
-
         try:
             return json.loads(content)  # type: ignore[no-any-return]
         except json.JSONDecodeError as exc:
-            raise LLMResponseError(
-                f"Unable to parse content as JSON: {exc}",
-                cause=exc,
-            )
+            raise LLMResponseError(f"Unable to parse content as JSON: {exc}", cause=exc)
 
 
-def _classify_error(exc: BaseException | None) -> str:
-    if exc is None:
-        return "unknown"
-    if isinstance(exc, LLMAuthError):
-        return "auth_error"
-    if isinstance(exc, LLMTimeoutError):
-        return "timeout"
-    if isinstance(exc, LLMResponseError):
-        if "Unable to parse" in str(exc):
-            return "invalid_json"
-        return "response_error"
-    return "connection_error"
+def _current_exc() -> BaseException | None:
+    import sys
+    return sys.exc_info()[1]

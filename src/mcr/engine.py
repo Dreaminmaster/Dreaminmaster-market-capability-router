@@ -10,7 +10,8 @@ from .query_lattice import QueryLatticeGenerator
 from .risk import RiskEngine
 from .router import CapabilityRouter
 from .hybrid.merge import merge_analysis
-from .hybrid.config import resolve_config, LLMConfig
+from .hybrid.config import LLMConfig
+from .simple_guard import should_use_capability_router
 
 
 class MarketCapabilityRouter:
@@ -80,31 +81,32 @@ class MarketCapabilityRouter:
     ) -> dict[str, Any]:
         """Run rules analysis, optionally enrich with model.
 
-        Returns a dict suitable for JSON serialization. If adapter is None
-        or config is not configured, returns rules-only result.
+        Returns a dict suitable for JSON serialization.
         """
         rule_result = self.analyze(text)
         warnings: list[str] = []
 
+        # ── simple task gate ──
+        if not should_use_capability_router(text):
+            return merge_analysis(rule_result, None, warnings)
+
+        # ── not configured ──
         if adapter is None or config is None or not config.configured:
             return merge_analysis(rule_result, None, warnings)
 
-        # Redact sensitive content before sending to model
-        from .hybrid.validation import redact as redact_text
-        redacted_text, redact_warnings = redact_text(text)
+        # ── redact ──
+        from .hybrid.validation import redact_recursive
+        redacted_text, redact_warnings = redact_recursive(text)
         warnings.extend(redact_warnings)
 
+        # ── model call ──
         from .hybrid.prompts import SYSTEM_PROMPT, build_user_payload
-        from .hybrid.schemas import ANALYSIS_SCHEMA
+        from .hybrid.schemas import ANALYSIS_SCHEMA, validate_schema
 
         user_payload = build_user_payload(
             request_text=redacted_text,
             rule_frictions=[
-                {
-                    "type": f.friction_type,
-                    "confidence": f.score,
-                    "evidence": f.matched_signals,
-                }
+                {"type": f.friction_type, "confidence": f.score, "evidence": f.matched_signals}
                 for f in rule_result.frictions
             ],
             rule_routes=[
@@ -114,7 +116,11 @@ class MarketCapabilityRouter:
         )
 
         model_payload: dict[str, Any] | None = None
+        model_status = "not_configured"
+        attempted = False
+
         try:
+            attempted = True
             response = adapter.complete_json(
                 system=SYSTEM_PROMPT,
                 user_payload=user_payload,
@@ -122,11 +128,53 @@ class MarketCapabilityRouter:
                 timeout_seconds=config.timeout_seconds,
             )
             warnings.extend(response.warnings)
+
             if response.success and response.parsed:
                 model_payload = response.parsed
+                # Injection check first
+                from .hybrid.merge import _check_injection_recursive
+                if _check_injection_recursive(model_payload):
+                    warnings.append("Prompt injection detected in model output, discarding enrichment")
+                    model_payload = None
+                    model_status = "prompt_injection_warning"
+                else:
+                    # Schema validation
+                    schema_errors = validate_schema(model_payload)
+                    if schema_errors:
+                        warnings.append("Model schema validation failed, discarding enrichment")
+                        warnings.extend(schema_errors)
+                        model_payload = None
+                        model_status = "schema_error"
+                    else:
+                        model_status = "ok"
             else:
-                warnings.append("Model returned no valid parsed output")
+                if response.warnings:
+                    for w in response.warnings:
+                        if "auth" in w.lower() or "unauthorized" in w.lower():
+                            model_status = "auth_error"
+                            break
+                        if "timeout" in w.lower():
+                            model_status = "timeout"
+                            break
+                    if not model_status or model_status == "not_configured":
+                        model_status = "invalid_json"
+                else:
+                    model_status = "invalid_json"
         except Exception as exc:
+            attempted = True
+            msg = str(exc).lower()
+            if "auth" in msg or "unauthorized" in msg:
+                model_status = "auth_error"
+            elif "timeout" in msg or "timed out" in msg:
+                model_status = "timeout"
+            elif "connection" in msg or "refused" in msg:
+                model_status = "connection_error"
+            else:
+                model_status = "connection_error"
             warnings.append(f"Model call failed: {exc}")
 
-        return merge_analysis(rule_result, model_payload, warnings)
+        merged = merge_analysis(rule_result, model_payload, warnings)
+        if "model_enrichment" in merged:
+            merged["model_enrichment"]["attempted"] = attempted
+            merged["model_enrichment"]["status"] = model_status
+        return merged

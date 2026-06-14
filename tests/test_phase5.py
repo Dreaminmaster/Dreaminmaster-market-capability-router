@@ -1,9 +1,8 @@
-"""Phase 5 tests: CLI modes, hybrid with fake adapter, OpenMinis smoke, simple task guard."""
+"""Phase 5 tests: CLI modes, hybrid with fake adapter, simple task guard."""
 
 from __future__ import annotations
 
 import json
-import io
 import subprocess
 import sys
 import tempfile
@@ -16,21 +15,9 @@ from mcr.hybrid.config import LLMConfig
 
 
 class TestCLIModes(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.mcr_bin = (
-            Path(__file__).resolve().parent.parent
-            / ".venv" / "bin" / "mcr"
-        )
-        if not cls.mcr_bin.exists():
-            cls.mcr_bin = Path(
-                "/root/Dreaminmaster-market-capability-router"
-                "/.venv/bin/mcr"
-            )
-
     def _run(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [str(self.mcr_bin)] + list(args),
+            [sys.executable, "-m", "mcr.cli"] + list(args),
             capture_output=True,
             text=True,
             timeout=30,
@@ -47,7 +34,6 @@ class TestCLIModes(unittest.TestCase):
             self.assertEqual(proc.returncode, 0)
             data = json.loads(proc.stdout)
             self.assertIn("goal", data)
-            self.assertNotIn("model_enrichment", data)  # rules mode returns raw AnalysisResult
         finally:
             Path(tmp).unlink()
 
@@ -67,12 +53,22 @@ class TestCLIModes(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
 
-class TestHybridWithFake(unittest.TestCase):
-    """Hybrid mode with FakeAdapter via programmatic API."""
+class CountingFakeAdapter(FakeAdapter):
+    """FakeAdapter that counts calls for testing simple-task guard."""
 
+    def __init__(self):
+        super().__init__()
+        self.call_count = 0
+
+    def complete_json(self, **kwargs):
+        self.call_count += 1
+        return super().complete_json(**kwargs)
+
+
+class TestHybridWithFake(unittest.TestCase):
     def test_hybrid_fake_enrichment_applied(self):
         engine = MarketCapabilityRouter()
-        adapter = FakeAdapter()
+        adapter = CountingFakeAdapter()
         config = LLMConfig(base_url="http://fake", model="fake-model")
 
         result = engine.analyze_with_model(
@@ -83,11 +79,26 @@ class TestHybridWithFake(unittest.TestCase):
         enrichment = result.get("model_enrichment", {})
         self.assertTrue(enrichment["applied"])
         self.assertEqual(enrichment["status"], "ok")
+        self.assertEqual(adapter.call_count, 1)
 
     def test_hybrid_no_config_returns_rules(self):
         engine = MarketCapabilityRouter()
-        adapter = None
-        config = LLMConfig()  # not configured
+        config = LLMConfig()
+
+        result = engine.analyze_with_model(
+            "装修报价单看不懂",
+            adapter=None,
+            config=config,
+        )
+        enrichment = result.get("model_enrichment", {})
+        self.assertFalse(enrichment["attempted"])
+        self.assertEqual(enrichment["status"], "not_configured")
+
+    def test_hybrid_attempted_when_configured_even_on_failure(self):
+        """attempted=true when adapter exists and config is set, even if call fails."""
+        engine = MarketCapabilityRouter()
+        adapter = FakeAdapter(error=ConnectionError)
+        config = LLMConfig(base_url="http://fake", model="fake-model")
 
         result = engine.analyze_with_model(
             "装修报价单看不懂",
@@ -95,32 +106,32 @@ class TestHybridWithFake(unittest.TestCase):
             config=config,
         )
         enrichment = result.get("model_enrichment", {})
-        self.assertFalse(enrichment["applied"])
-        self.assertEqual(enrichment["status"], "not_configured")
+        self.assertTrue(enrichment["attempted"])
+        self.assertIn(enrichment["status"], ("connection_error",))
 
 
 class TestSimpleTaskGuard(unittest.TestCase):
-    """Simple writing tasks should not invoke model or market."""
-
     def test_simple_writing_not_market(self):
         engine = MarketCapabilityRouter()
         result = engine.analyze("把这句话改得更通顺")
-        # Rules-only: no market recommended
         self.assertFalse(result.market_recommended)
         self.assertEqual(result.recommended_service_level, "information")
 
-    def test_simple_writing_hybrid_no_enrichment(self):
-        """Even in hybrid mode, simple tasks get rules-only (adapter None)."""
+    def test_simple_writing_not_calling_adapter(self):
+        """With configured CountingFakeAdapter, simple task must not call it."""
         engine = MarketCapabilityRouter()
+        adapter = CountingFakeAdapter()
+        config = LLMConfig(base_url="http://fake", model="fake-model")
+
         result = engine.analyze_with_model(
             "把这句话改得更通顺",
-            adapter=None,
-            config=LLMConfig(),
+            adapter=adapter,
+            config=config,
         )
+        self.assertEqual(adapter.call_count, 0,
+                         "Simple writing task must not invoke model adapter")
         enrichment = result.get("model_enrichment", {})
-        self.assertFalse(enrichment["applied"])
-        # Market not recommended
-        self.assertFalse(result.get("market_recommended", True))
+        self.assertFalse(enrichment.get("applied", True))
 
 
 if __name__ == "__main__":

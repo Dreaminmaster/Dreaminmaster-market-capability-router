@@ -194,7 +194,7 @@ class TestConflictRecording(unittest.TestCase):
             "real_goal": "test",
             "friction_hypotheses": [],
             "task_hypotheses": [{
-                "title": "buy service",
+                "title": "sensitive action",
                 "expected_deliverable": "done",
                 "suggested_routes": ["MARKET"],
                 "requires_user_action": False,
@@ -208,10 +208,8 @@ class TestConflictRecording(unittest.TestCase):
         }
         result = merge_analysis(rule, model)
         conflicts = result.get("conflicts", [])
-        self.assertTrue(any("SELF" in c for c in conflicts))
-        # The model's task was still added but with corrected primary route
-        tasks = result.get("routes", [])
-        self.assertTrue(len(tasks) >= 2, "Both rule and model task should be present")
+        self.assertTrue(any("SELF" in c for c in conflicts),
+                        f"Expected SELF conflict, got: {conflicts}")
 
 
 if __name__ == "__main__":

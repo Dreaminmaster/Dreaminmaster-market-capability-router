@@ -91,7 +91,7 @@ class TestSchemas(unittest.TestCase):
         self.assertTrue(any("schema_version" in e for e in errors))
 
     def test_missing_friction_fields(self):
-        """validate_schema checks top-level structure, not deep per-item required."""
+        """validate_schema now deeply checks per-item required fields."""
         payload = {
             "schema_version": "0.2",
             "real_goal": "test",
@@ -104,8 +104,8 @@ class TestSchemas(unittest.TestCase):
             "warnings": [],
         }
         errors = validate_schema(payload)
-        # With all top-level keys present and schema_version correct, no errors
-        self.assertEqual(errors, [])
+        self.assertTrue(len(errors) > 0, "Deep validation should catch missing fields")
+        self.assertTrue(any("confidence" in e for e in errors))
 
     def test_unknown_friction_type_present_in_enum(self):
         self.assertIn("verification", VALID_FRICTION_TYPES)
@@ -198,7 +198,7 @@ class TestMergeSafety(unittest.TestCase):
         self.assertEqual(result["model_enrichment"]["status"], "schema_error")
 
     def test_model_cannot_override_self_route(self):
-        """Model suggesting MARKET where SELF is required should trigger conflict."""
+        """Model suggesting MARKET for a SELF-protected task should conflict."""
         rule = AnalysisResult(
             goal="account appeal",
             frictions=[],
@@ -224,7 +224,7 @@ class TestMergeSafety(unittest.TestCase):
             "real_goal": "account appeal",
             "friction_hypotheses": [],
             "task_hypotheses": [{
-                "title": "find someone to unblock",
+                "title": "provide credentials",
                 "expected_deliverable": "account restored",
                 "suggested_routes": ["MARKET"],
                 "requires_user_action": False,
@@ -243,7 +243,7 @@ class TestMergeSafety(unittest.TestCase):
                         f"Expected SELF conflict, got: {conflicts}")
 
     def test_model_cannot_override_official_route(self):
-        """Model suggesting AI/MARKET where OFFICIAL is required should conflict."""
+        """Model suggesting AI/MARKET for an OFFICIAL-protected task should conflict."""
         rule = AnalysisResult(
             goal="visa issue",
             frictions=[],
@@ -269,7 +269,7 @@ class TestMergeSafety(unittest.TestCase):
             "real_goal": "visa",
             "friction_hypotheses": [],
             "task_hypotheses": [{
-                "title": "get visa fast via agent",
+                "title": "submit official application",
                 "expected_deliverable": "visa approved",
                 "suggested_routes": ["MARKET", "AI"],
                 "requires_user_action": False,

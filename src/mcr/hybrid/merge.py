@@ -1,22 +1,11 @@
-"""Deterministic hybrid merge — rule engine output + model hypotheses.
-
-Governed by these merge rules:
-1. Rule risk flags always remain; model cannot lower a rule risk severity.
-2. SELF and OFFICIAL routes required by rule stay.
-3. Model routes added only as secondary unless a deterministic rule promotes them.
-4. Model-generated terms marked `source=model`, `status=candidate`.
-5. Unknown dialect meanings never auto-enter verified seed.
-6. Conflicts are recorded, safer rule wins.
-"""
+"""Deterministic hybrid merge — rewritten with per-task SELF/OFFICIAL protection."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from ..models import (AnalysisResult, FRICTIONS, ROUTES)
+from ..models import AnalysisResult, FRICTIONS, ROUTES
 from .schemas import detect_injection_text
-
-# ── provenance markers ──────────────────────────────────────────────────────
 
 SOURCE_RULE = "rule"
 SOURCE_MODEL = "model"
@@ -28,37 +17,13 @@ STATUS_CANDIDATE = "candidate"
 STATUS_REJECTED = "rejected"
 
 
-class MergeMeta:
-    """Provenance wrapper for a merged item."""
-
-    __slots__ = ("value", "source", "confidence", "matched_evidence",
-                 "status", "conflicts")
-
-    def __init__(self, *, value: Any, source: str, confidence: float = 0.0,
-                 matched_evidence: list[str] | None = None,
-                 status: str = STATUS_CANDIDATE, conflicts: list[str] | None = None):
-        self.value = value
-        self.source = source
-        self.confidence = confidence
-        self.matched_evidence = matched_evidence or []
-        self.status = status
-        self.conflicts = conflicts or []
-
-
 def merge_analysis(
     rule_result: AnalysisResult,
     model_payload: dict[str, Any] | None,
     model_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Merge rule engine output with model hypotheses. Returns an enriched dict.
-
-    Args:
-        rule_result: The deterministic engine output (always present).
-        model_payload: Parsed model JSON, or None if model failed.
-        model_warnings: Warnings accumulated during model call attempt.
-    """
-    enrichment = {
-        "attempted": True,
+    enrichment: dict[str, Any] = {
+        "attempted": model_payload is not None,
         "applied": False,
         "status": "not_configured",
         "warnings": list(model_warnings or []),
@@ -71,38 +36,40 @@ def merge_analysis(
     if model_payload is None:
         return result
 
-    # ── schema version guard ──
     if model_payload.get("schema_version") != "0.2":
         enrichment["status"] = "schema_error"
         enrichment["warnings"].append("Model response schema version mismatch")
         return result
 
-    # ── injection check ──
-    injection_detected = False
-    real_goal = model_payload.get("real_goal", "")
-    if isinstance(real_goal, str) and detect_injection_text(real_goal):
-        enrichment["warnings"].append("Prompt injection detected in model output")
-        injection_detected = True
+    injection_detected = _check_injection_recursive(model_payload)
+    if injection_detected:
+        enrichment["status"] = "prompt_injection_warning"
+        enrichment["warnings"].append("Prompt injection detected in model output; enrichment skipped")
+        return result
 
     enrichment["applied"] = True
     enrichment["status"] = "ok"
 
-    # ── merge rule friction with model friction ──
+    _merge_real_goal(result, model_payload)
     _merge_frictions(result, model_payload, enrichment)
-
-    # ── merge routes — preserve SELF/OFFICIAL ──
     _merge_routes(result, model_payload, enrichment)
-
-    # ── merge model terms (candidate status only) ──
+    _merge_query_terms(result, model_payload)
     _merge_terms(result, model_payload)
-
-    # ── merge dialect hypotheses ──
     _merge_dialect(result, model_payload)
-
-    if injection_detected:
-        enrichment["status"] = "prompt_injection_warning"
+    _merge_model_warnings(result, model_payload)
 
     return result
+
+
+# ── per-field merge helpers ─────────────────────────────────────────────
+
+def _merge_real_goal(result: dict, model: dict) -> None:
+    rg = model.get("real_goal")
+    if isinstance(rg, str) and rg.strip():
+        result.setdefault("evidence_trail", []).append({
+            "source": SOURCE_MODEL, "item": "real_goal",
+            "status": STATUS_CANDIDATE, "value": rg[:200],
+        })
 
 
 def _merge_frictions(result: dict, model: dict, enrichment: dict) -> None:
@@ -113,9 +80,7 @@ def _merge_frictions(result: dict, model: dict, enrichment: dict) -> None:
     for mf in model_frictions:
         ftype = mf.get("type")
         if ftype not in FRICTIONS:
-            enrichment.setdefault("warnings", []).append(
-                f"Model returned unknown friction type: {ftype}"
-            )
+            enrichment.setdefault("warnings", []).append(f"Model returned unknown friction type: {ftype}")
             continue
         if ftype in existing_types:
             continue
@@ -127,18 +92,19 @@ def _merge_frictions(result: dict, model: dict, enrichment: dict) -> None:
             "source": SOURCE_MODEL,
             "status": STATUS_CANDIDATE,
         })
-    evidence = {"source": SOURCE_MODEL, "item": "friction_hypotheses"}
-    result.setdefault("evidence_trail", []).append(evidence)
+    result.setdefault("evidence_trail", []).append({"source": SOURCE_MODEL, "item": "friction_hypotheses"})
 
 
 def _merge_routes(result: dict, model: dict, enrichment: dict) -> None:
+    """Per-task route merge. A model task conflicting with a rule-required
+    SELF or OFFICIAL on the SAME task is moved to secondary or marked
+    as a conflict.  Other tasks are NOT affected."""
     existing_tasks = {r["task"] for r in result.get("routes", [])}
-    required_routes = {
-        r["primary_route"]
-        for r in result.get("routes", [])
-        if r.get("primary_route") in ("SELF", "OFFICIAL")
-        or any(s in ("SELF", "OFFICIAL") for s in r.get("secondary_routes", []))
-    }
+    # Build per-task sensitivity: which existing tasks require SELF/OFFICIAL
+    rule_protected: dict[str, str] = {}  # task -> required primary route
+    for r in result.get("routes", []):
+        if r.get("primary_route") in ("SELF", "OFFICIAL"):
+            rule_protected[r["task"]] = r["primary_route"]
 
     model_tasks = model.get("task_hypotheses", [])
     if not isinstance(model_tasks, list):
@@ -146,70 +112,68 @@ def _merge_routes(result: dict, model: dict, enrichment: dict) -> None:
 
     for mt in model_tasks:
         title = (mt.get("title") or "").strip()
-        if not title or title in existing_tasks:
+        if not title:
             continue
         routes = [r for r in (mt.get("suggested_routes") or []) if r in ROUTES]
         if not routes:
             continue
-
-        conflicts = []
         primary = routes[0]
-        secondaries = routes[1:] if len(routes) > 1 else []
+        secondaries = list(routes[1:] if len(routes) > 1 else [])
 
-        if "SELF" in required_routes and primary == "MARKET":
-            conflicts.append(
-                "Model suggested MARKET where SELF is required; keeping SELF"
-            )
-            enrichment.setdefault("warnings", []).append(conflicts[-1])
-            secondaries = [primary] + [s for s in secondaries if s != "SELF"]
-            primary = "SELF"
-
-        if "OFFICIAL" in required_routes and primary in ("MARKET", "AI"):
-            conflicts.append(
-                "Model suggested non-OFFICIAL where OFFICIAL is required; keeping OFFICIAL"
-            )
-            enrichment.setdefault("warnings", []).append(conflicts[-1])
-            secondaries = [primary] + [s for s in secondaries if s != "OFFICIAL"]
-            primary = "OFFICIAL"
+        # Per-task SELF/OFFICIAL conflict: only if this exact task is protected
+        conflicts = []
+        if title in rule_protected and primary != rule_protected[title]:
+            required = rule_protected[title]
+            msg = f"Task '{title[:60]}': model suggested {primary} but rules require {required}; keeping {required} as primary, moving model route to secondary"
+            enrichment.setdefault("warnings", []).append(msg)
+            result.setdefault("conflicts", []).append(msg)
+            secondaries = [primary] + secondaries
+            primary = required
 
         result.setdefault("routes", []).append({
             "task": title,
             "primary_route": primary,
             "secondary_routes": secondaries,
             "market_stage": "candidate",
-            "confidence": min(1.0, max(0.0, 0.5)),
+            "confidence": min(1.0, max(0.0, float(mt.get("confidence", 0.5)))),
             "reasons": ["Model hypothesis — requires validation"],
             "human_gate": mt.get("sensitivity") == "high",
             "source": SOURCE_MODEL,
             "status": STATUS_CANDIDATE,
+            "expected_deliverable": mt.get("expected_deliverable", ""),
+            "requires_user_action": mt.get("requires_user_action", False),
         })
         if conflicts:
             result.setdefault("conflicts", []).extend(conflicts)
 
-    evidence = {"source": SOURCE_MODEL, "item": "task_hypotheses"}
-    result.setdefault("evidence_trail", []).append(evidence)
+    result.setdefault("evidence_trail", []).append({"source": SOURCE_MODEL, "item": "task_hypotheses"})
+
+
+def _merge_query_terms(result: dict, model: dict) -> None:
+    terms = model.get("query_terms", [])
+    if isinstance(terms, list) and terms:
+        existing = set(result.get("query_lattice", {}).get("combined_queries", []))
+        new = [t for t in terms if isinstance(t, str) and t.strip() not in existing][:8]
+        if new:
+            result.setdefault("query_lattice", {})["query_terms_model"] = new
+            result.setdefault("evidence_trail", []).append({
+                "source": SOURCE_MODEL, "item": "query_terms",
+                "status": STATUS_CANDIDATE,
+            })
 
 
 def _merge_terms(result: dict, model: dict) -> None:
-    """Add model-generated profession/service/query terms as candidates."""
-    for field, key in [("profession_terms", "profession_terms"),
-                       ("service_terms", "service_terms")]:
-        model_terms = model.get(key, [])
+    for field in ("profession_terms", "service_terms"):
+        model_terms = model.get(field, [])
         if isinstance(model_terms, list) and model_terms:
             existing = set(result.get("query_lattice", {}).get(field, []))
-            new = [
-                t for t in model_terms
-                if isinstance(t, str) and t.strip() not in existing
-            ][:8]
+            new = [t for t in model_terms if isinstance(t, str) and t.strip() not in existing][:8]
             if new:
-                result.setdefault("query_lattice", {})[
-                    f"{field}_model"
-                ] = new
-                evidence = {
-                    "source": SOURCE_MODEL, "item": key,
+                result.setdefault("query_lattice", {})[f"{field}_model"] = new
+                result.setdefault("evidence_trail", []).append({
+                    "source": SOURCE_MODEL, "item": field,
                     "status": STATUS_CANDIDATE,
-                }
-                result.setdefault("evidence_trail", []).append(evidence)
+                })
 
 
 def _merge_dialect(result: dict, model: dict) -> None:
@@ -234,8 +198,33 @@ def _merge_dialect(result: dict, model: dict) -> None:
             })
     if new:
         result.setdefault("dialect_matches", []).extend(new)
-        evidence = {
+        result.setdefault("evidence_trail", []).append({
             "source": SOURCE_MODEL, "item": "unknown_dialect_hypotheses",
             "status": STATUS_CANDIDATE,
-        }
-        result.setdefault("evidence_trail", []).append(evidence)
+        })
+
+
+def _merge_model_warnings(result: dict, model: dict) -> None:
+    warnings = model.get("warnings", [])
+    if isinstance(warnings, list) and warnings:
+        result.setdefault("model_enrichment", {}).setdefault("warnings", []).extend(
+            [w for w in warnings if isinstance(w, str)]
+        )
+
+
+def _check_injection_recursive(obj: Any, _seen: set | None = None) -> bool:
+    """Recursively check all strings in a nested structure for injection."""
+    if _seen is None:
+        _seen = set()
+    obj_id = id(obj)
+    if obj_id in _seen:
+        return False
+    _seen.add(obj_id)
+
+    if isinstance(obj, str):
+        return detect_injection_text(obj)
+    if isinstance(obj, dict):
+        return any(_check_injection_recursive(v, _seen) for v in obj.values())
+    if isinstance(obj, (list, tuple)):
+        return any(_check_injection_recursive(v, _seen) for v in obj)
+    return False
