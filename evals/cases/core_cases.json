@@ -2,89 +2,161 @@
   {
     "id": "renovation",
     "input": "装修公司给了我一份报价单，我看不懂，也担心后续增项。",
-    "expect": {
-      "friction": "verification",
-      "route": "MARKET",
-      "market": true,
-      "query_contains": "装修报价单"
-    }
+    "expect": {"friction": "verification", "route": "MARKET", "market": true, "query_contains": "装修报价单"}
   },
   {
     "id": "account",
     "input": "账号申诉三次失败，有人说百分百解封，需要验证码。",
-    "expect": {
-      "friction": "diagnosis",
-      "route": "OFFICIAL",
-      "market": false,
-      "critical_risk": true
-    }
+    "expect": {"friction": "diagnosis", "route": "OFFICIAL", "market": false, "critical_risk": true}
   },
   {
     "id": "hotel",
     "input": "酒店价格太贵，不知道有没有合法的更优惠预订渠道。",
-    "expect": {
-      "friction": "channel",
-      "route": "TOOL",
-      "market": true,
-      "query_contains": "酒店预订"
-    }
+    "expect": {"friction": "channel", "route": "TOOL", "market": true, "query_contains": "酒店预订"}
   },
   {
     "id": "onsite",
     "input": "我人在国外，需要有人帮我现场看房并拍照。",
-    "expect": {
-      "friction": "execution",
-      "route": "MARKET",
-      "market": true
-    }
+    "expect": {"friction": "execution", "route": "MARKET", "market": true}
   },
   {
     "id": "simple",
     "input": "请帮我把下面的文字整理得更清楚。",
-    "expect": {
-      "route": "AI",
-      "market": false
-    }
+    "expect": {"route": "AI", "market": false}
   },
   {
     "id": "contract",
     "input": "这份合同我担心有隐藏风险，想找人复核。",
-    "expect": {
-      "friction": "verification",
-      "route": "PROFESSIONAL",
-      "market": true
-    }
+    "expect": {"friction": "verification", "route": "PROFESSIONAL", "market": true}
   },
   {
     "id": "device",
     "input": "准备买二手电脑，担心维修过，想远程验机。",
-    "expect": {
-      "friction": "verification",
-      "route": "MARKET",
-      "market": true,
-      "query_contains": "二手设备"
-    }
+    "expect": {"friction": "verification", "route": "MARKET", "market": true, "query_contains": "二手设备"}
   },
   {
     "id": "offplatform",
     "input": "卖家让我脱离平台微信转账，价格仅展示。",
-    "expect": {
-      "high_risk": true
-    }
+    "expect": {"high_risk": true}
   },
   {
     "id": "dialect",
     "input": "卖家写的是报价体检，拍前联系。",
-    "expect": {
-      "dialect": "装修报价审核"
-    }
+    "expect": {"dialect": "装修报价审核"}
   },
   {
     "id": "self_sensitive",
     "input": "对方让我把账号密码给他操作。",
-    "expect": {
-      "route": "SELF",
-      "critical_risk": true
-    }
+    "expect": {"route": "SELF", "critical_risk": true}
+  },
+  {
+    "id": "visa_inquiry",
+    "input": "我想办申根签证，不知道流程和材料要求。",
+    "expect": {"route": "OFFICIAL", "market": false}
+  },
+  {
+    "id": "tax_filing",
+    "input": "个人报税太复杂，想找人帮我处理税务。",
+    "expect": {"route": "PROFESSIONAL"}
+  },
+  {
+    "id": "moving_service",
+    "input": "下周搬家，需要搬家公司搬家具。",
+    "expect": {"route": "MARKET", "market": true}
+  },
+  {
+    "id": "resume_review",
+    "input": "我的简历写好了，但不确定格式和专业性。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "pet_sitter",
+    "input": "出差三天，需要找人照顾猫。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "english_translation",
+    "input": "把这份英文合同翻译成中文。",
+    "expect": {"route": ["AI", "MARKET"]}
+  },
+  {
+    "id": "credit_dispute",
+    "input": "银行信用卡有不明扣款，想申诉退款。",
+    "expect": {"route": "OFFICIAL"}
+  },
+  {
+    "id": "interior_design",
+    "input": "新房装修想找设计师出效果图。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "phone_repair",
+    "input": "手机屏幕碎了，想找人换屏。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "passport_renewal",
+    "input": "护照快过期了，怎么续期？",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "wedding_photo",
+    "input": "想找摄影师拍婚纱照，预算一万以内。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "math_tutoring",
+    "input": "孩子数学成绩下降，想找家教辅导。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "car_maintenance",
+    "input": "汽车要做保养，不知道4S店还是第三方划算。",
+    "expect": {"friction": "knowledge", "market": true}
+  },
+  {
+    "id": "password_reset_help",
+    "input": "有人可以帮助重置我的微信密码吗？",
+    "expect": {"route": "SELF"}
+  },
+  {
+    "id": "internal_unlock",
+    "input": "找内部渠道解锁游戏账号，百分百成功。",
+    "expect": {"route": "TOOL"}
+  },
+  {
+    "id": "fake_invoice",
+    "input": "需要找人开发票，金额大一点。",
+    "expect": {"route": "AI", "no_risk": true}
+  },
+  {
+    "id": "photo_retouch",
+    "input": "有一些照片需要修图美化。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "website_debug",
+    "input": "自己写的网站有个 bug 一直修不好。",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "non_chinese_hotel",
+    "input": "I need to find a reliable hotel booking service in Tokyo.",
+    "expect": {"route": "AI", "market": false}
+  },
+  {
+    "id": "non_chinese_simple",
+    "input": "Please rephrase this sentence to sound more professional.",
+    "expect": {"market": false}
+  },
+  {
+    "id": "ambiguity_unsure",
+    "input": "这个东西不知道该找谁弄。",
+    "expect": {"any_friction": true}
+  },
+  {
+    "id": "mixed_routes_official_market",
+    "input": "公司注册需要什么资料？找代办靠谱吗？",
+    "expect": {"market": true}
   }
 ]
