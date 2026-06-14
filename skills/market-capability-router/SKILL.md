@@ -48,13 +48,21 @@ Do not trigger solely because a marketplace is mentioned. First determine whethe
 9. Set human approval gates before credentials, identity documents, account access, payment, signing, or submission.
 10. State uncertainty and missing evidence.
 
-## OpenMinis runtime invocation
+## OpenMinis runtime invocation (v0.2)
 
-When running inside OpenMinis and `shell_execute` is available, use the installed deterministic runtime instead of relying only on free-form reasoning. Never interpolate untrusted user text directly into a shell command. Write the text to a UTF-8 temporary file through the filesystem tool, then use the absolute executable path:
+When running inside OpenMinis and `shell_execute` is available, use the installed deterministic runtime instead of relying only on free-form reasoning.
 
+**Rules mode (default, no network required):**
 ```bash
-/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt
+/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt --mode rules
 ```
+
+**Hybrid mode (model enrichment optional):**
+```bash
+/root/Dreaminmaster-market-capability-router/.venv/bin/mcr analyze @/tmp/mcr-user-request.txt --mode hybrid
+```
+
+Write user text to a UTF-8 temporary file first (never interpolate directly into shell). Hybrid mode falls back to rules when no model is configured or a connection fails — it will not break.
 
 For a normalized candidate object, pass JSON through stdin:
 
