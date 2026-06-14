@@ -138,11 +138,9 @@ def validate_schema(payload: dict[str, Any]) -> list[str]:
         errors.append(f"schema_version must be {SCHEMA_VERSION!r}")
 
     rg = payload.get("real_goal")
+    _check_string(rg, "real_goal", errors)
     if isinstance(rg, str):
-        _check_string(rg, "real_goal", errors)
         _check_injection("real_goal", rg, errors)
-    elif rg is not None:
-        errors.append("real_goal: must be a string")
 
     _validate_frictions(payload.get("friction_hypotheses"), errors)
     _validate_tasks(payload.get("task_hypotheses"), errors)

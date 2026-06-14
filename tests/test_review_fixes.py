@@ -127,3 +127,77 @@ class TestPerTaskRouting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAdapterRetry(unittest.TestCase):
+    """Verify 429/502 retry, 400/401 no retry."""
+
+    def _counter_adapter(self):
+        from mcr.adapters.llm.openai_compatible import OpenAICompatibleAdapter, _NonRetryable, _RetryableServerError
+
+        class CountingSend(OpenAICompatibleAdapter):
+            def __init__(self):
+                super().__init__(base_url="http://x", model="m", max_retries=1)
+                self.send_count = 0
+                self._next_exc = None
+
+            def set_exc(self, exc):
+                self._next_exc = exc
+
+            def _send(self, body_bytes, timeout):
+                self.send_count += 1
+                if self._next_exc:
+                    raise self._next_exc
+                return '{"choices":[{"message":{"content":"{}"}}]}', 0
+
+            def _parse(self, raw):
+                return {}
+
+        return CountingSend()
+
+    def test_429_retries(self):
+        from mcr.adapters.llm.openai_compatible import _RetryableServerError, STATUS_HTTP_ERROR
+        a = self._counter_adapter()
+        a.set_exc(_RetryableServerError(STATUS_HTTP_ERROR, "http_error", "429", http_status=429))
+        a.complete_json(system="", user_payload={}, schema={}, timeout_seconds=5)
+        self.assertEqual(a.send_count, 2, "429 should retry once (2 total sends)")
+
+    def test_502_retries(self):
+        from mcr.adapters.llm.openai_compatible import _RetryableServerError, STATUS_HTTP_ERROR
+        a = self._counter_adapter()
+        a.set_exc(_RetryableServerError(STATUS_HTTP_ERROR, "http_error", "502", http_status=502))
+        a.complete_json(system="", user_payload={}, schema={}, timeout_seconds=5)
+        self.assertEqual(a.send_count, 2)
+
+    def test_400_no_retry(self):
+        from mcr.adapters.llm.openai_compatible import _NonRetryable, STATUS_HTTP_ERROR
+        a = self._counter_adapter()
+        a.set_exc(_NonRetryable(STATUS_HTTP_ERROR, "http_error", "400", http_status=400))
+        a.complete_json(system="", user_payload={}, schema={}, timeout_seconds=5)
+        self.assertEqual(a.send_count, 1, "400 should NOT retry")
+
+    def test_401_no_retry(self):
+        from mcr.adapters.llm.openai_compatible import _NonRetryable, STATUS_AUTH_ERROR
+        a = self._counter_adapter()
+        a.set_exc(_NonRetryable(STATUS_AUTH_ERROR, "auth_error", "401", http_status=401))
+        a.complete_json(system="", user_payload={}, schema={}, timeout_seconds=5)
+        self.assertEqual(a.send_count, 1)
+
+
+class TestEngineExceptionFallback(unittest.TestCase):
+    def test_adapter_raises_unexpected_sets_connection_error(self):
+        from mcr.engine import MarketCapabilityRouter
+        from mcr.adapters.llm.fake import FakeAdapter
+        from mcr.hybrid.config import LLMConfig
+
+        engine = MarketCapabilityRouter()
+        adapter = FakeAdapter(error=ConnectionError)
+        config = LLMConfig(base_url="http://x", model="m")
+        result = engine.analyze_with_model("装修报价看不懂", adapter=adapter, config=config)
+        enrichment = result.get("model_enrichment", {})
+        self.assertTrue(enrichment["attempted"], "attempted should be True")
+        self.assertFalse(enrichment["applied"], "applied should be False")
+        self.assertEqual(enrichment["status"], "connection_error")
+        # Rules result must still exist
+        self.assertTrue(len(result.get("routes", [])) > 0)
+        self.assertEqual(result.get("goal"), "装修报价看不懂")

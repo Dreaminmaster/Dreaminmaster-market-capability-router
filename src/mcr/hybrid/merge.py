@@ -62,10 +62,6 @@ def merge_analysis(
         enrichment["status"] = "merge_error"
         enrichment["warnings"].append(f"Merge failed: {exc}")
         result["route_hypotheses"] = []
-        enrichment["applied"] = False
-        enrichment["status"] = "merge_error"
-        enrichment["warnings"].append(f"Merge failed: {exc}")
-        result["route_hypotheses"] = []
 
     return result
 

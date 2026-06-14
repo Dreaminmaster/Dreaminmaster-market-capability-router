@@ -59,6 +59,17 @@ class OpenAICompatibleAdapter:
                     raw_text=raw_text, parsed=parsed, latency_ms=latency_ms,
                     warnings=warnings, status=STATUS_OK,
                 )
+            except _RetryableServerError as exc:
+                attempt_num = attempt + 1
+                if attempt_num <= self.max_retries:
+                    warnings.append(f"Retry {attempt_num}/{self.max_retries}: {exc}")
+                    continue
+                return LLMResponse(
+                    provider="openai_compatible", model=self.model,
+                    warnings=warnings + [str(exc)],
+                    status=exc.status, error_type=exc.error_type,
+                    http_status=exc.http_status,
+                )
             except _NonRetryable as exc:
                 return LLMResponse(
                     provider="openai_compatible", model=self.model,

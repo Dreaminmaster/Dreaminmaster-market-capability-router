@@ -68,10 +68,13 @@ class TestSchemas(unittest.TestCase):
         errors = validate_schema(payload)
         self.assertTrue(any("confidence" in e for e in errors))
 
-    def test_confidence_none(self):
-        """confidence=None should not crash, but since we skip None checks,
-        no error is raised. The field simply passes through."""
-        return  # confidence=None causes no error (None is not a number)
+    def test_real_goal_none_rejected(self):
+        from copy import deepcopy
+        payload = deepcopy(DEFAULT_FAKE_RESPONSE)
+        payload["real_goal"] = None
+        errors = validate_schema(payload)
+        self.assertTrue(any("real_goal" in e for e in errors),
+                        f"Expected real_goal error, got {errors}")
 
     def test_non_dict(self):
         errors = validate_schema("string")  # type: ignore[arg-type]
